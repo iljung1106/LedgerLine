@@ -15,7 +15,7 @@
       "artifacts": [
         {
           "id": "windows-any",
-          "url": "../dist/ledgerline-starter-0.2.0-ll.1.llpack",
+          "url": "https://github.com/iljung1106/LedgerLine/releases/download/v0.2.0/ledgerline-starter-0.2.0-ll.1.llpack",
           "size_bytes": 35606011,
           "sha256": "674af2326d26f72445df2d37ea78a854904f2e7ed440bf0c69fb883a8520f98f",
           "media_type": "application/vnd.ledgerline.llpack+zip",

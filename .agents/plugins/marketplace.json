@@ -1,0 +1,20 @@
+{
+  "name": "ledgerline",
+  "interface": {
+    "displayName": "LedgerLine"
+  },
+  "plugins": [
+    {
+      "name": "ledgerline",
+      "source": {
+        "source": "local",
+        "path": "./plugins/ledgerline"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Creativity"
+    }
+  ]
+}

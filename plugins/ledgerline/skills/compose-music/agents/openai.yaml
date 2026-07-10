@@ -1,0 +1,6 @@
+interface:
+  display_name: "Compose Music with LedgerLine"
+  short_description: "Author, validate, render, and refine music"
+  default_prompt: "Use $compose-music to ask my direction and develop a playable composition."
+policy:
+  allow_implicit_invocation: true

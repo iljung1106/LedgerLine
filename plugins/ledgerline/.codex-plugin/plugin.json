@@ -1,0 +1,30 @@
+{
+  "name": "ledgerline",
+  "version": "0.2.0",
+  "description": "Agent-native composition with explicit MusicXML/MIDI authorship, orchestration, performance control, rendering, and review.",
+  "author": {
+    "name": "iljung1106",
+    "email": "iljung1106@users.noreply.github.com",
+    "url": "https://github.com/iljung1106"
+  },
+  "homepage": "https://github.com/iljung1106/LedgerLine",
+  "repository": "https://github.com/iljung1106/LedgerLine",
+  "license": "MIT",
+  "keywords": ["music", "composition", "musicxml", "midi", "orchestration", "fluidsynth"],
+  "skills": "./skills/",
+  "interface": {
+    "displayName": "LedgerLine",
+    "shortDescription": "Compose, orchestrate, render, and review music",
+    "longDescription": "LedgerLine gives Codex a strict agent-authored score language and local tools for MusicXML, MIDI, expression controls, multi-staff notation, virtual-instrument rendering, mixing, and objective review.",
+    "developerName": "iljung1106",
+    "category": "Creativity",
+    "capabilities": ["Interactive", "Write", "Local tools"],
+    "websiteURL": "https://github.com/iljung1106/LedgerLine",
+    "defaultPrompt": [
+      "Ask me for a musical direction, then compose a playable LedgerLine piece.",
+      "Orchestrate my sketch and render a reviewable audio draft.",
+      "Inspect this LedgerLine score and improve its expression without silent rewrites."
+    ],
+    "brandColor": "#7257D5"
+  }
+}

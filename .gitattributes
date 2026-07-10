@@ -1,4 +1,5 @@
 * text=auto eol=lf
+*.whl binary
 
 # Catalog signatures cover exact bytes; checkout conversion must never change them.
 packs/catalog.json text eol=lf

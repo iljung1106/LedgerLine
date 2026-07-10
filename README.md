@@ -48,6 +48,19 @@ python -m venv .venv
 .\.venv\Scripts\ledgerline.exe compile examples\performance-demo
 ```
 
+## Codex plugin
+
+The repository is also a Codex marketplace. After it is published:
+
+```powershell
+codex plugin marketplace add iljung1106/LedgerLine --ref main
+codex plugin add ledgerline@ledgerline
+```
+
+Start a new Codex task and invoke `$compose-music`. The skill first establishes the user's
+musical direction, then gates runtime/sample downloads behind explicit plans and consent. It uses a
+managed Python environment and never changes PATH or the registry.
+
 Rendering requires FluidSynth and an SF2/SF3. Both may be passed explicitly; LedgerLine never
 silently selects an unrelated instrument library.
 
@@ -76,6 +89,6 @@ plan, and pass its random token only after the user approves it:
   --consent "TOKEN_FROM_THE_APPROVED_PLAN" --json
 ```
 
-The repository catalog points to the local reproducible artifact for development. A packaged
-release must replace that location with its HTTPS release asset and re-sign the exact catalog
-bytes using the offline private key. The private key is ignored by Git and must never be published.
+The signed catalog points to the immutable GitHub v0.2.0 release asset. Release creation must upload
+the locally reproduced artifact with the exact catalog hash. The private key is ignored by Git and
+must never be published.
