@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 from typing import Any
 
@@ -7,13 +8,16 @@ import yaml
 
 from ledgerline.diagnostics import Diagnostic, ValidationError
 from ledgerline.model import (
+    ControlEvent,
     InstrumentProfile,
     KeyChange,
     Measure,
     Part,
     Piece,
+    StaffDefinition,
     TempoChange,
     TimeChange,
+    control_event_from_dict,
     event_from_dict,
     parse_anchor,
     parse_pitch,
@@ -85,6 +89,7 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
                 "midi",
                 "clef",
                 "articulations",
+                "keyswitches",
             },
             str(path),
         )
@@ -92,6 +97,22 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
         comfortable = data["range"].get("comfortable", absolute)
         midi = data["midi"]
         clef = data.get("clef", {"sign": "G", "line": 2})
+        _reject_unknown(data["range"], {"absolute", "comfortable"}, f"{path}:range")
+        _reject_unknown(midi, {"bank_msb", "bank_lsb", "program"}, f"{path}:midi")
+        _reject_unknown(clef, {"sign", "line"}, f"{path}:clef")
+        raw_keyswitches = data.get("keyswitches", {})
+        if not isinstance(raw_keyswitches, dict):
+            raise ValueError("keyswitches must be a mapping of semantic names to pitches")
+        keyswitches = {}
+        for name, pitch in raw_keyswitches.items():
+            if not isinstance(name, str) or not name.strip():
+                raise ValueError("keyswitch names must be non-empty strings")
+            if not isinstance(pitch, str):
+                raise ValueError(f"keyswitch {name!r} pitch must be a string")
+            normalized_name = name.strip()
+            if normalized_name in keyswitches:
+                raise ValueError(f"duplicate keyswitch name: {normalized_name!r}")
+            keyswitches[normalized_name] = parse_pitch(pitch)
         return InstrumentProfile(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -107,6 +128,7 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
             clef_sign=str(clef["sign"]),
             clef_line=int(clef["line"]),
             articulations=frozenset(data.get("articulations", [])),
+            keyswitches=keyswitches,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValidationError(
@@ -175,7 +197,7 @@ def load_piece(root: str | Path) -> Piece:
                 raise ValueError("part file must remain inside the project directory")
             profile = load_profile(root_path, profile_id)
             profiles[profile_id] = profile
-            part = _load_part(part_id, name, profile_id, source_path, diagnostics)
+            part = _load_part(part_id, name, profile_id, profile, source_path, diagnostics)
             parts.append(part)
         except (KeyError, TypeError, ValueError) as exc:
             diagnostics.append(Diagnostic("error", "part.reference_invalid", path_prefix, str(exc)))
@@ -200,12 +222,17 @@ def _load_part(
     part_id: str,
     name: str,
     profile_id: str,
+    profile: InstrumentProfile,
     source_path: Path,
     diagnostics: list[Diagnostic],
 ) -> Part:
     data = _read_yaml(source_path)
     try:
-        _reject_unknown(data, {"format", "part", "measures"}, str(source_path))
+        _reject_unknown(
+            data,
+            {"format", "part", "staves", "controls", "measures"},
+            str(source_path),
+        )
     except ValueError as exc:
         diagnostics.append(Diagnostic("error", "part.unknown_field", str(source_path), str(exc)))
     if int(data.get("format", 0)) != 1:
@@ -221,6 +248,16 @@ def _load_part(
                 f"Expected part id {part_id!r}.",
             )
         )
+    try:
+        staves = _load_staves(data.get("staves"), profile, source_path)
+    except (TypeError, ValueError, KeyError) as exc:
+        diagnostics.append(
+            Diagnostic("error", "part.staves_invalid", f"{source_path}:staves", str(exc))
+        )
+        staves = (
+            StaffDefinition(1, "staff-1", profile.clef_sign, profile.clef_line),
+        )
+
     raw_measures = data.get("measures")
     if not isinstance(raw_measures, dict):
         diagnostics.append(
@@ -254,7 +291,83 @@ def _load_part(
                     str(exc),
                 )
             )
-    return Part(part_id, name, profile_id, source_path, measures)
+    controls: list[ControlEvent] = []
+    raw_controls = data.get("controls", [])
+    if not isinstance(raw_controls, list):
+        diagnostics.append(
+            Diagnostic("error", "part.controls_type", str(source_path), "controls must be a list")
+        )
+    else:
+        for index, raw_control in enumerate(raw_controls):
+            try:
+                if not isinstance(raw_control, dict):
+                    raise ValueError("control must be a mapping")
+                controls.append(control_event_from_dict(dict(raw_control)))
+            except (TypeError, ValueError, KeyError) as exc:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "control.invalid",
+                        f"{source_path}:controls[{index}]",
+                        str(exc),
+                    )
+                )
+    return Part(
+        id=part_id,
+        name=name,
+        profile_id=profile_id,
+        source_path=source_path,
+        measures=measures,
+        controls=tuple(controls),
+        staves=staves,
+    )
+
+
+def _load_staves(
+    raw_staves: object,
+    profile: InstrumentProfile,
+    source_path: Path,
+) -> tuple[StaffDefinition, ...]:
+    if raw_staves is None:
+        return (StaffDefinition(1, "staff-1", profile.clef_sign, profile.clef_line),)
+    if not isinstance(raw_staves, list) or not raw_staves:
+        raise ValueError("staves must be a non-empty list")
+    if len(raw_staves) > 32:
+        raise ValueError("a part supports at most 32 staves")
+
+    staves: list[StaffDefinition] = []
+    for index, raw_staff in enumerate(raw_staves):
+        path = f"{source_path}:staves[{index}]"
+        if not isinstance(raw_staff, dict):
+            raise ValueError(f"{path} must be a mapping")
+        _reject_unknown(raw_staff, {"number", "name", "clef"}, path)
+        number = raw_staff.get("number")
+        if isinstance(number, bool) or not isinstance(number, int):
+            raise ValueError(f"{path}.number must be an integer")
+        if not 1 <= number <= 32:
+            raise ValueError(f"{path}.number must be between 1 and 32")
+        name = str(raw_staff.get("name", f"staff-{number}")).strip()
+        if not name:
+            raise ValueError(f"{path}.name must be non-empty")
+        clef = raw_staff.get("clef")
+        if not isinstance(clef, dict):
+            raise ValueError(f"{path}.clef must be a mapping")
+        _reject_unknown(clef, {"sign", "line"}, f"{path}.clef")
+        sign = str(clef.get("sign", ""))
+        if sign not in {"G", "F", "C", "percussion", "TAB", "none"}:
+            raise ValueError(f"{path}.clef.sign is unsupported: {sign!r}")
+        line = clef.get("line")
+        if isinstance(line, bool) or not isinstance(line, int) or not 1 <= line <= 5:
+            raise ValueError(f"{path}.clef.line must be an integer between 1 and 5")
+        staves.append(StaffDefinition(number, name, sign, line))
+
+    actual_numbers = [staff.number for staff in staves]
+    expected_numbers = list(range(1, len(staves) + 1))
+    if actual_numbers != expected_numbers:
+        raise ValueError(
+            f"staff numbers must be contiguous and ordered {expected_numbers}; got {actual_numbers}"
+        )
+    return tuple(staves)
 
 
 def re_voice_name(value: object) -> bool:
@@ -320,6 +433,8 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
             )
     for part in piece.parts:
         profile = piece.profiles[part.profile_id]
+        _validate_controls(piece, part, profile, diagnostics)
+        declared_staves = {staff.number for staff in part.staves}
         active_ties: dict[str, set[int]] = {}
         for number in part.measures:
             if not 1 <= number <= piece.measures:
@@ -349,6 +464,27 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                         )
                     )
                 for event_index, event in enumerate(events):
+                    event_path = (
+                        f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]"
+                    )
+                    if len(part.staves) > 1 and event.staff is None:
+                        diagnostics.append(
+                            Diagnostic(
+                                "error",
+                                "staff.required_multistaff",
+                                event_path,
+                                "Every event in a multi-staff part must declare staff.",
+                            )
+                        )
+                    elif event.staff is not None and event.staff not in declared_staves:
+                        diagnostics.append(
+                            Diagnostic(
+                                "error",
+                                "staff.undefined",
+                                event_path,
+                                f"Staff {event.staff} is not declared by this part.",
+                            )
+                        )
                     event_midis = {pitch.midi for pitch in event.pitches}
                     if event.tie in {"stop", "continue"} and not event_midis <= tie_pitches:
                         diagnostics.append(
@@ -416,3 +552,83 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                     )
                 )
     return diagnostics
+
+
+def _validate_controls(
+    piece: Piece,
+    part: Part,
+    profile: InstrumentProfile,
+    diagnostics: list[Diagnostic],
+) -> None:
+    pedal_down = False
+    cc_at_anchor: dict[tuple[int, Fraction, int], int] = {}
+    indexed = sorted(
+        enumerate(part.controls),
+        key=lambda item: (item[1].measure, item[1].beat, item[0]),
+    )
+    for source_index, control in indexed:
+        path = f"{part.source_path}:controls[{source_index}]"
+        if not 1 <= control.measure <= piece.measures:
+            diagnostics.append(
+                Diagnostic("error", "control.measure", path, "Control targets no piece measure.")
+            )
+            continue
+        time = piece.time_at(control.measure)
+        if control.beat > time.beats:
+            diagnostics.append(
+                Diagnostic("error", "control.beat", path, "Control anchor is outside the measure.")
+            )
+            continue
+        if control.kind == "cc":
+            key = (control.measure, control.beat, int(control.controller))
+            previous = cc_at_anchor.get(key)
+            if previous is not None and previous != control.value:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "control.cc_conflict",
+                        path,
+                        "The same controller has conflicting values at one anchor.",
+                    )
+                )
+            cc_at_anchor[key] = int(control.value)
+        elif control.kind == "pedal":
+            if control.pedal_action == "down":
+                if pedal_down:
+                    diagnostics.append(
+                        Diagnostic("error", "pedal.already_down", path, "Pedal is already down.")
+                    )
+                pedal_down = True
+            elif control.pedal_action == "up":
+                if not pedal_down:
+                    diagnostics.append(
+                        Diagnostic("error", "pedal.already_up", path, "Pedal is already up.")
+                    )
+                pedal_down = False
+            elif not pedal_down:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "pedal.change_while_up",
+                        path,
+                        "Pedal change requires pedal down.",
+                    )
+                )
+        elif control.kind == "keyswitch" and control.keyswitch not in profile.keyswitches:
+            diagnostics.append(
+                Diagnostic(
+                    "error",
+                    "instrument.keyswitch_unsupported",
+                    path,
+                    f"{profile.id} does not declare keyswitch {control.keyswitch!r}.",
+                )
+            )
+    if pedal_down:
+        diagnostics.append(
+            Diagnostic(
+                "error",
+                "pedal.unclosed",
+                str(part.source_path),
+                "Sustain pedal remains down at the end of the piece; author an explicit up event.",
+            )
+        )

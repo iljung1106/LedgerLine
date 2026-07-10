@@ -93,6 +93,7 @@ class Event:
     articulation: str | None = None
     tie: str | None = None
     velocity: int | None = None
+    staff: int | None = None
 
     @property
     def is_rest(self) -> bool:
@@ -106,12 +107,35 @@ class Measure:
 
 
 @dataclass(frozen=True, slots=True)
+class ControlEvent:
+    measure: int
+    beat: Fraction
+    kind: str
+    controller: int | None = None
+    value: int | None = None
+    pedal_action: str | None = None
+    keyswitch: str | None = None
+    velocity: int = 64
+    duration: Fraction = Fraction(1, 32)
+
+
+@dataclass(frozen=True, slots=True)
+class StaffDefinition:
+    number: int
+    name: str
+    clef_sign: str
+    clef_line: int
+
+
+@dataclass(frozen=True, slots=True)
 class Part:
     id: str
     name: str
     profile_id: str
     source_path: Path
     measures: dict[int, Measure]
+    controls: tuple[ControlEvent, ...] = ()
+    staves: tuple[StaffDefinition, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,6 +179,7 @@ class InstrumentProfile:
     clef_sign: str = "G"
     clef_line: int = 2
     articulations: frozenset[str] = frozenset(SUPPORTED_ARTICULATIONS)
+    keyswitches: dict[str, Pitch] = field(default_factory=dict)
 
 
 @dataclass(frozen=True, slots=True)
@@ -178,7 +203,7 @@ class Piece:
 
 
 def event_from_dict(data: dict[str, Any]) -> Event:
-    unknown = sorted(set(data) - {"p", "r", "d", "dyn", "art", "tie", "vel"})
+    unknown = sorted(set(data) - {"p", "r", "d", "dyn", "art", "tie", "vel", "staff"})
     if unknown:
         raise ValueError(f"unknown event fields: {', '.join(unknown)}")
     duration = parse_duration(str(data["d"]))
@@ -210,7 +235,85 @@ def event_from_dict(data: dict[str, Any]) -> Event:
         velocity = int(velocity)
         if not 1 <= velocity <= 127:
             raise ValueError("velocity must be between 1 and 127")
-    return Event(duration, pitches, dynamic, articulation, tie, velocity)
+    staff = data.get("staff")
+    if staff is not None and (
+        isinstance(staff, bool) or not isinstance(staff, int) or staff < 1
+    ):
+        raise ValueError("staff must be a positive integer")
+    return Event(
+        duration=duration,
+        pitches=pitches,
+        dynamic=dynamic,
+        articulation=articulation,
+        tie=tie,
+        velocity=velocity,
+        staff=staff,
+    )
+
+
+def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
+    try:
+        measure, beat = parse_anchor(str(data["at"]))
+        kind = str(data["type"])
+    except KeyError as exc:
+        raise ValueError(f"control requires {exc.args[0]!r}") from exc
+
+    if kind == "cc":
+        _reject_control_fields(data, {"at", "type", "controller", "value"})
+        controller = _control_int(data, "controller")
+        value = _control_int(data, "value")
+        if controller in {0, 32}:
+            raise ValueError("CC 0 and 32 are reserved for the instrument profile's bank select")
+        if controller == 64:
+            raise ValueError("use type: pedal instead of raw CC 64")
+        return ControlEvent(measure, beat, kind, controller=controller, value=value)
+
+    if kind == "pedal":
+        _reject_control_fields(data, {"at", "type", "action"})
+        action = str(data.get("action", ""))
+        if action not in {"down", "up", "change"}:
+            raise ValueError("pedal action must be down, up, or change")
+        return ControlEvent(measure, beat, kind, pedal_action=action)
+
+    if kind == "keyswitch":
+        _reject_control_fields(data, {"at", "type", "name", "velocity", "duration"})
+        raw_name = data.get("name")
+        if not isinstance(raw_name, str) or not raw_name.strip():
+            raise ValueError("keyswitch name must be a non-empty string")
+        name = raw_name.strip()
+        velocity = _control_int(data, "velocity", default=64, minimum=1)
+        duration = parse_duration(str(data.get("duration", "1/32")))
+        return ControlEvent(
+            measure,
+            beat,
+            kind,
+            keyswitch=name,
+            velocity=velocity,
+            duration=duration,
+        )
+
+    raise ValueError(f"unsupported control type: {kind!r}")
+
+
+def _reject_control_fields(data: dict[str, Any], allowed: set[str]) -> None:
+    unknown = sorted(set(data) - allowed)
+    if unknown:
+        raise ValueError(f"unknown {data.get('type', 'control')} fields: {', '.join(unknown)}")
+
+
+def _control_int(
+    data: dict[str, Any],
+    field_name: str,
+    *,
+    default: int | None = None,
+    minimum: int = 0,
+) -> int:
+    raw = data.get(field_name, default)
+    if isinstance(raw, bool) or not isinstance(raw, int):
+        raise ValueError(f"{field_name} must be an integer")
+    if not minimum <= raw <= 127:
+        raise ValueError(f"{field_name} must be between {minimum} and 127")
+    return raw
 
 
 def parse_anchor(value: str) -> tuple[int, Fraction]:

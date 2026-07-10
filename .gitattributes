@@ -1,0 +1,7 @@
+* text=auto eol=lf
+
+# Catalog signatures cover exact bytes; checkout conversion must never change them.
+packs/catalog.json text eol=lf
+packs/catalog.json.sig text eol=lf
+src/ledgerline/data/packs/catalog.json text eol=lf
+src/ledgerline/data/packs/catalog.json.sig text eol=lf

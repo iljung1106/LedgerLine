@@ -1,0 +1,14 @@
+format: 1
+title: Grand Staff and Performance Controls
+measures: 2
+time:
+  - {measure: 1, beats: 4, beat_type: 4}
+tempo:
+  - {at: "1:1", bpm: 84}
+key:
+  - {measure: 1, fifths: 0, mode: major}
+parts:
+  - id: piano
+    name: Piano
+    profile: starter.acoustic-grand-piano
+    file: parts/piano.yaml

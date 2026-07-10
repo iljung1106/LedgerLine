@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "keys": [
+    {
+      "id": "ledgerline-release-2026-01",
+      "algorithm": "ed25519",
+      "public_key_base64": "WRA0ATJIqIlYt/DDAQYeltn4znwA/IUkIBDM0HmoJYc=",
+      "status": "active"
+    }
+  ]
+}

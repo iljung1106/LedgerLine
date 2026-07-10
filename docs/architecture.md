@@ -19,7 +19,7 @@ every musical change itself.
 ## Authored contracts
 
 - `piece.yaml`: global meter, tempo, key, part/profile bindings.
-- `parts/*.yaml`: measure-local voices and exact events.
+- `parts/*.yaml`: measure-local voices, exact events, and anchored performance controls.
 - `mix.yaml`: gain, equal-power pan, shared reverb sends, and master targets.
 - `NOTES.md`: user direction, form plan, critique, and human listening decisions.
 
@@ -31,9 +31,9 @@ reported as warnings.
 
 `doctor` distinguishes discovered local assets from LedgerLine-managed assets and records SHA-256.
 Unmanaged tools and SoundFonts are never automatically selected. They may be used only through
-explicit command arguments. Managed assets will live below `%LOCALAPPDATA%\LedgerLine` and must
-match a signed pack manifest.
+explicit command arguments. Managed assets live below `%LOCALAPPDATA%\LedgerLine` (or the explicit
+`LEDGERLINE_HOME`) and are activated only after the pinned Ed25519 catalog, llpack manifest, and
+every payload hash have been verified.
 
 Before synthesis, the SoundFont `phdr` table is parsed and every requested bank/program is checked.
 There is no nearest-program fallback.
-

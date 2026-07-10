@@ -12,6 +12,14 @@
 - Stem mix with authored gain/pan, shared reverb bus, two-pass loudness normalization, and limiter.
 - FFprobe/FFmpeg measurement for 16-bit and 24-bit WAV.
 - Fail-closed setup planning and managed/unmanaged asset distinction.
+- Explicit multi-staff parts with numbered clefs, per-event staff placement, strict validation,
+  MusicXML grand-staff output, and notation-neutral MIDI playback.
+- Anchored CC automation, validated sustain-pedal state, and profile-declared semantic keyswitches
+  with MIDI playback and lossless MusicXML annotations.
+- Reproducible MuseScore General 0.2 Starter `.llpack` with pinned source hashes and full notices.
+- Detached Ed25519 catalog signatures with a pinned public key, expiry, and downgrade checks.
+- Expiring random single-use setup plans, safe streamed ZIP extraction, versioned atomic activation,
+  receipts, quarantine, active-version pointers, and SoundFont smoke validation.
 
 ## Local integration evidence
 
@@ -25,10 +33,10 @@
 
 ## Not implemented yet
 
-- Signed downloadable Starter/Core `.llpack` artifacts and `setup apply`.
-- CC curves, pedal, keyswitch profiles, tuplets, multiple staves, lyrics, and MusicXML escape hatch.
+- Publishing the Starter `.llpack` as an HTTPS release asset; the development catalog uses `dist/`.
+- Signed downloadable Core `.llpack` artifacts.
+- Tuplets, lyrics, and MusicXML escape hatch.
 - Engraved-page, piano-roll, waveform, and spectrogram images.
 - Detailed voice-leading diagnostics and transposing-instrument fixtures.
 - Native SFZ renderer and Extended pack.
 - Codex plugin/MCP wrapper.
-

@@ -1,30 +1,41 @@
 {
   "schema_version": "1",
+  "catalog_version": 2026071001,
+  "generated_at": "2026-07-10T14:00:00Z",
+  "expires_at": "2027-07-10T14:00:00Z",
   "packs": [
     {
       "id": "starter",
-      "version": "0.1.0-planned",
-      "display_name": "LedgerLine Starter",
-      "status": "audit_required",
-      "approx_download_bytes": 39900972,
+      "version": "0.2.0-ll.1",
+      "display_name": "LedgerLine Starter — MuseScore General 0.2",
+      "status": "installable",
       "license": "MIT",
+      "attribution": "MuseScore General contributors; full notices included in the pack",
       "source_page": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/",
-      "artifacts": [],
-      "blocked_reasons": [
-        "The upstream artifact has no official checksum; LedgerLine must pin its own audited SHA-256."
+      "artifacts": [
+        {
+          "id": "windows-any",
+          "url": "../../../../dist/ledgerline-starter-0.2.0-ll.1.llpack",
+          "size_bytes": 35606011,
+          "sha256": "674af2326d26f72445df2d37ea78a854904f2e7ed440bf0c69fb883a8520f98f",
+          "media_type": "application/vnd.ledgerline.llpack+zip",
+          "unpacked_size_limit": 40972024,
+          "entry_limit": 6,
+          "manifest_sha256": "5c981c457aca566bb6d7ed5f1196573828ce9790f35047a4e6f7f5384a79211c"
+        }
       ]
     },
     {
       "id": "core",
       "version": "0.1.0-planned",
       "display_name": "LedgerLine Core",
-      "status": "designing",
-      "approx_download_bytes": 4000000000,
+      "status": "blocked",
       "license": "LicenseRef-Mixed-Audited",
+      "attribution": "Not yet released",
       "source_page": "https://versilian-studios.com/vsco-community/",
       "artifacts": [],
       "blocked_reasons": [
-        "The reproducible SF3 build recipes and per-sample license manifest are not complete."
+        "Reproducible SF3 build recipes and the per-sample license manifest are not complete."
       ]
     }
   ]

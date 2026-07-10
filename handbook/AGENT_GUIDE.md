@@ -33,6 +33,48 @@ the installed instrument coverage before choosing the ensemble. Never invent an 
 6. Measure clipping and loudness; do not convert those measurements into an aesthetic score.
 7. Change one musical or mix decision at a time and record why in `NOTES.md`.
 
+## Multiple staves
+
+Declare notation staves in a part when one instrument needs more than one staff. Number them
+contiguously from 1 and give each one an explicit clef. In a multi-staff part, every authored event
+must name its staff; LedgerLine will not guess a hand or silently move a note between staves.
+
+```yaml
+format: 1
+part: piano
+staves:
+  - {number: 1, name: right, clef: {sign: G, line: 2}}
+  - {number: 2, name: left, clef: {sign: F, line: 4}}
+measures:
+  "1":
+    v1:
+      - {p: [C4, E4, G4], d: 1/1, staff: 1}
+    v2:
+      - {p: C3, d: 1/1, staff: 2}
+```
+
+Staff placement affects MusicXML engraving only. MIDI pitch and timing remain identical. Because
+`staff` belongs to each event, a voice may cross between declared staves deliberately. Single-staff
+parts may omit both `staves` and event-level `staff`; the instrument profile's clef is then used.
+
+## Performance controls
+
+Author channel controls on the part timeline, independently of note voices. Use semantic pedal
+events instead of raw CC64, and semantic keyswitch names declared by the instrument profile.
+
+```yaml
+controls:
+  - {at: "1:1", type: cc, controller: 11, value: 72}
+  - {at: "1:1", type: pedal, action: down}
+  - {at: "1:3", type: pedal, action: change}
+  - {at: "2:1", type: keyswitch, name: legato, velocity: 64, duration: 1/32}
+  - {at: "2:4", type: pedal, action: up}
+```
+
+CC0 and CC32 remain owned by the profile's bank selection. Pedal state must be consistent and end
+up. A missing keyswitch mapping is a hard error. MIDI contains the playback events; MusicXML uses
+standard pedal directions and retains CC/keyswitch data as hidden LedgerLine directions.
+
 ## Musical checks
 
 - Keep important lines in a deliberate register and within the instrument's comfortable range.
@@ -50,4 +92,3 @@ the installed instrument coverage before choosing the ensemble. Never invent an 
 Objective tools cannot decide whether a melody is memorable, harmony is moving, or a groove feels
 good. Ask the user to listen at least after the first 8-bar sketch, the structural draft, the first
 mix, and before final delivery.
-

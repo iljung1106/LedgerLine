@@ -78,6 +78,9 @@ def _profile_record(profile) -> dict:
             "program": profile.program,
         },
         "articulations": sorted(profile.articulations),
+        "keyswitches": {
+            name: str(pitch) for name, pitch in sorted(profile.keyswitches.items())
+        },
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return {**payload, "sha256": hashlib.sha256(canonical).hexdigest()}

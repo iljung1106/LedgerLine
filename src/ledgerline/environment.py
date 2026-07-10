@@ -61,15 +61,30 @@ def doctor() -> dict:
     managed_soundfonts = [item for item in soundfonts if item["origin"] == "ledgerline-pack"]
     managed_render_ready = bool(managed_renderer and managed_soundfonts)
     if render_available and not managed_render_ready:
+        if managed_soundfonts and not managed_renderer:
+            code = "UNMANAGED_RENDERER"
+            detail = (
+                "A verified LedgerLine SoundFont is active, but the discovered FluidSynth "
+                "executable is unmanaged. LedgerLine will not select it automatically."
+            )
+            fix = "Pass --fluidsynth explicitly; a managed renderer pack is not released yet."
+        elif managed_renderer and not managed_soundfonts:
+            code = "UNMANAGED_SOUNDFONT"
+            detail = "A managed renderer exists, but no verified LedgerLine SoundFont is active."
+            fix = "Run ledgerline setup plan --packs starter and approve that exact plan."
+        else:
+            code = "UNMANAGED_AUDIO_ASSETS"
+            detail = (
+                "Local audio tools were discovered, but LedgerLine has not installed or "
+                "verified them. Pass their paths explicitly to use them."
+            )
+            fix = "Install an audited pack or explicitly pass --fluidsynth and --soundfont."
         problems.append(
             {
-                "code": "UNMANAGED_AUDIO_ASSETS",
+                "code": code,
                 "severity": "warning",
-                "detail": (
-                    "Local audio tools were discovered, but LedgerLine has not installed or "
-                    "verified them. Pass their paths explicitly to use them."
-                ),
-                "fix": "Install an audited pack or explicitly pass --fluidsynth and --soundfont.",
+                "detail": detail,
+                "fix": fix,
             }
         )
     report = {
@@ -140,8 +155,18 @@ def _find_soundfonts() -> list[dict[str, str | int]]:
         paths.append((Path(override).expanduser(), "environment"))
     pack_root = ledgerline_home() / "packs"
     if pack_root.is_dir():
-        for suffix in ("*.sf2", "*.sf3"):
-            paths.extend((path, "ledgerline-pack") for path in pack_root.rglob(suffix))
+        for pack_dir in sorted(path for path in pack_root.iterdir() if path.is_dir()):
+            active_file = pack_dir / "ACTIVE"
+            if not active_file.is_file():
+                continue
+            version = active_file.read_text(encoding="utf-8").strip()
+            if not version or any(character in version for character in "/\\:"):
+                continue
+            active_root = pack_dir / version
+            if not active_root.is_dir():
+                continue
+            for suffix in ("*.sf2", "*.sf3"):
+                paths.extend((path, "ledgerline-pack") for path in active_root.rglob(suffix))
     muse_sound = Path(os.environ.get("PROGRAMFILES", "C:/Program Files")) / "MuseScore 4" / "sound"
     if muse_sound.is_dir():
         for suffix in ("*.sf2", "*.sf3"):

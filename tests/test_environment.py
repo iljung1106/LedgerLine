@@ -12,11 +12,11 @@ def test_doctor_is_machine_readable() -> None:
         assert len(renderer["sha256"]) == 64
 
 
-def test_setup_plan_fails_closed_before_asset_audit() -> None:
-    plan = create_setup_plan(["starter"])
+def test_setup_plan_blocks_unreleased_core_pack() -> None:
+    plan = create_setup_plan(["core"])
     assert plan["status"] == "blocked"
     assert plan["steps"] == []
-    assert plan["blocked"][0]["pack"] == "starter"
+    assert plan["blocked"][0]["pack"] == "core"
 
 
 def test_doctor_reports_actionable_missing_audio(monkeypatch) -> None:

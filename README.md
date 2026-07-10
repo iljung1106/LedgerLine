@@ -10,13 +10,15 @@ contain a baseline composer, auto-orchestrator, quality score, or automatic musi
 
 ## Current milestone
 
-The first milestone provides:
+The current milestone provides:
 
 - environment discovery through `ledgerline doctor`;
-- a machine-readable setup plan contract;
+- Ed25519-signed pack catalogs, single-use setup plans, and atomic `setup apply`;
+- a reproducible Starter `.llpack` based on MuseScore General 0.2;
 - measure-local score documents;
-- validation of meter, pitches, ranges, dynamics, and articulations;
+- validation of meter, pitches, ranges, dynamics, articulations, performance controls, and staves;
 - deterministic MusicXML and MIDI compilation;
+- authored CC, sustain-pedal, semantic keyswitch, and grand-staff compilation;
 - FluidSynth rendering with an explicitly selected SF2/SF3;
 - an example project and an agent operating guide.
 
@@ -43,6 +45,7 @@ python -m venv .venv
 .\.venv\Scripts\ledgerline.exe validate examples\nocturne
 .\.venv\Scripts\ledgerline.exe compile examples\nocturne
 .\.venv\Scripts\ledgerline.exe inspect examples\nocturne --json
+.\.venv\Scripts\ledgerline.exe compile examples\performance-demo
 ```
 
 Rendering requires FluidSynth and an SF2/SF3. Both may be passed explicitly; LedgerLine never
@@ -59,6 +62,20 @@ silently selects an unrelated instrument library.
 
 ## Audio packs
 
-Large sample libraries do not live in Git. Signed `.llpack` release assets and the consent-based
-installer are planned as separate deliverables. Catalog entries remain non-installable until their
-download URL, checksum, license, and attribution have been audited.
+Large sample libraries do not live in Git. Build the audited Starter artifact, inspect the exact
+plan, and pass its random token only after the user approves it:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\build_starter_pack.py `
+  --source-dir .cache\starter-source `
+  --output dist\ledgerline-starter-0.2.0-ll.1.llpack
+
+.\.venv\Scripts\ledgerline.exe setup plan --packs starter `
+  --output starter-plan.json --json
+.\.venv\Scripts\ledgerline.exe setup apply --plan starter-plan.json `
+  --consent "TOKEN_FROM_THE_APPROVED_PLAN" --json
+```
+
+The repository catalog points to the local reproducible artifact for development. A packaged
+release must replace that location with its HTTPS release asset and re-sign the exact catalog
+bytes using the offline private key. The private key is ignored by Git and must never be published.

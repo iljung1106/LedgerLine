@@ -4,7 +4,7 @@ import xml.etree.ElementTree as ET
 from fractions import Fraction
 from pathlib import Path
 
-from ledgerline.model import Event, Piece, duration_token
+from ledgerline.model import ControlEvent, Event, Piece, duration_token
 
 DIVISIONS = 960
 WHOLE_TICKS = DIVISIONS * 4
@@ -42,7 +42,7 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
     for index, part in enumerate(piece.parts, start=1):
         profile = piece.profiles[part.profile_id]
         xml_part = ET.SubElement(score, "part", id=f"P{index}")
-        current_dynamic: str | None = None
+        current_dynamic: dict[int, str] = {}
         for measure_number in range(1, piece.measures + 1):
             xml_measure = ET.SubElement(xml_part, "measure", number=str(measure_number))
             if measure_number == 1 or any(
@@ -51,9 +51,6 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                 attributes = ET.SubElement(xml_measure, "attributes")
                 if measure_number == 1:
                     ET.SubElement(attributes, "divisions").text = str(DIVISIONS)
-                    if profile.transposition:
-                        transpose = ET.SubElement(attributes, "transpose")
-                        ET.SubElement(transpose, "chromatic").text = str(profile.transposition)
                 key = piece.key_at(measure_number)
                 key_node = ET.SubElement(attributes, "key")
                 ET.SubElement(key_node, "fifths").text = str(key.fifths)
@@ -63,9 +60,18 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                 ET.SubElement(time_node, "beats").text = str(time.beats)
                 ET.SubElement(time_node, "beat-type").text = str(time.beat_type)
                 if measure_number == 1:
-                    clef = ET.SubElement(attributes, "clef")
-                    ET.SubElement(clef, "sign").text = profile.clef_sign
-                    ET.SubElement(clef, "line").text = str(profile.clef_line)
+                    if len(part.staves) > 1:
+                        ET.SubElement(attributes, "staves").text = str(len(part.staves))
+                    for staff in part.staves:
+                        clef_attributes = (
+                            {"number": str(staff.number)} if len(part.staves) > 1 else {}
+                        )
+                        clef = ET.SubElement(attributes, "clef", **clef_attributes)
+                        ET.SubElement(clef, "sign").text = staff.clef_sign
+                        ET.SubElement(clef, "line").text = str(staff.clef_line)
+                    if profile.transposition:
+                        transpose = ET.SubElement(attributes, "transpose")
+                        ET.SubElement(transpose, "chromatic").text = str(profile.transposition)
 
             for tempo in [item for item in piece.tempo_changes if item.measure == measure_number]:
                 direction = ET.SubElement(xml_measure, "direction", placement="above")
@@ -75,9 +81,28 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                 ET.SubElement(metronome, "per-minute").text = f"{tempo.bpm:g}"
                 ET.SubElement(direction, "sound", tempo=f"{tempo.bpm:g}")
 
+            for control in [
+                item for item in part.controls if item.measure == measure_number
+            ]:
+                _append_control_direction(
+                    xml_measure,
+                    control,
+                    piece.time_at(measure_number).beat_type,
+                )
+
             source_measure = part.measures.get(measure_number)
             if source_measure is None:
-                _append_rest(xml_measure, piece.time_at(measure_number).length, "1")
+                measure_duration = piece.time_at(measure_number).length
+                for staff_index, staff in enumerate(part.staves):
+                    if staff_index:
+                        backup = ET.SubElement(xml_measure, "backup")
+                        ET.SubElement(backup, "duration").text = str(_ticks(measure_duration))
+                    _append_rest(
+                        xml_measure,
+                        measure_duration,
+                        str(staff.number),
+                        staff.number if len(part.staves) > 1 else None,
+                    )
                 continue
 
             measure_ticks = _ticks(piece.time_at(measure_number).length)
@@ -88,10 +113,20 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                     backup = ET.SubElement(xml_measure, "backup")
                     ET.SubElement(backup, "duration").text = str(measure_ticks)
                 for event in events:
-                    if event.dynamic and event.dynamic != current_dynamic:
-                        _append_dynamic(xml_measure, event.dynamic)
-                        current_dynamic = event.dynamic
-                    _append_event(xml_measure, event, voice_name[1:])
+                    staff_number = event.staff or 1
+                    if event.dynamic and event.dynamic != current_dynamic.get(staff_number):
+                        _append_dynamic(
+                            xml_measure,
+                            event.dynamic,
+                            staff_number if len(part.staves) > 1 else None,
+                        )
+                        current_dynamic[staff_number] = event.dynamic
+                    _append_event(
+                        xml_measure,
+                        event,
+                        voice_name[1:],
+                        staff=staff_number if len(part.staves) > 1 or event.staff else None,
+                    )
 
     ET.indent(score, space="  ")
     body = ET.tostring(score, encoding="unicode")
@@ -111,16 +146,59 @@ def _musicxml_channel(part_index: int) -> int:
     return min(channel, 16)
 
 
-def _append_dynamic(parent: ET.Element, dynamic: str) -> None:
+def _append_dynamic(parent: ET.Element, dynamic: str, staff: int | None = None) -> None:
     direction = ET.SubElement(parent, "direction", placement="below")
     direction_type = ET.SubElement(direction, "direction-type")
     dynamics = ET.SubElement(direction_type, "dynamics")
     ET.SubElement(dynamics, dynamic)
+    if staff is not None:
+        ET.SubElement(direction, "staff").text = str(staff)
 
 
-def _append_rest(parent: ET.Element, duration: Fraction, voice: str) -> None:
+def _append_control_direction(
+    parent: ET.Element,
+    control: ControlEvent,
+    beat_type: int,
+) -> None:
+    visible = control.kind == "pedal"
+    attributes = {"placement": "below"}
+    if not visible:
+        attributes["print-object"] = "no"
+    direction = ET.SubElement(parent, "direction", **attributes)
+    direction_type = ET.SubElement(direction, "direction-type")
+    if control.kind == "pedal":
+        pedal_type = {"down": "start", "up": "stop", "change": "change"}[
+            str(control.pedal_action)
+        ]
+        ET.SubElement(direction_type, "pedal", type=pedal_type, line="yes")
+    elif control.kind == "cc":
+        annotation = ET.SubElement(direction_type, "other-direction", type="ledgerline:cc")
+        annotation.text = f"controller={control.controller};value={control.value}"
+    else:
+        annotation = ET.SubElement(
+            direction_type,
+            "other-direction",
+            type="ledgerline:keyswitch",
+        )
+        annotation.text = (
+            f"name={control.keyswitch};velocity={control.velocity};"
+            f"duration={control.duration}"
+        )
+    offset = (control.beat - 1) * Fraction(1, beat_type)
+    ET.SubElement(direction, "offset").text = str(_ticks(offset))
+    if control.kind == "pedal":
+        is_down = control.pedal_action in {"down", "change"}
+        ET.SubElement(direction, "sound", **{"damper-pedal": "yes" if is_down else "no"})
+
+
+def _append_rest(
+    parent: ET.Element,
+    duration: Fraction,
+    voice: str,
+    staff: int | None = None,
+) -> None:
     event = Event(duration=duration)
-    _append_event(parent, event, voice, measure_rest=True)
+    _append_event(parent, event, voice, measure_rest=True, staff=staff)
 
 
 def _append_event(
@@ -129,6 +207,7 @@ def _append_event(
     voice: str,
     *,
     measure_rest: bool = False,
+    staff: int | None = None,
 ) -> None:
     note_type, dots = duration_token(event.duration)
     pitches = event.pitches or (None,)
@@ -155,6 +234,8 @@ def _append_event(
         ET.SubElement(note, "type").text = note_type
         for _ in range(dots):
             ET.SubElement(note, "dot")
+        if staff is not None:
+            ET.SubElement(note, "staff").text = str(staff)
         if event.articulation or event.tie:
             notations = ET.SubElement(note, "notations")
             if event.tie in {"start", "continue"}:

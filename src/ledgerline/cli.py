@@ -13,7 +13,8 @@ from ledgerline.environment import doctor
 from ledgerline.mixer import mix_project
 from ledgerline.project import load_piece
 from ledgerline.render import render_project
-from ledgerline.setup_plan import create_setup_plan
+from ledgerline.setup_apply import apply_setup_plan
+from ledgerline.setup_plan import create_setup_plan, persist_setup_plan
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -58,7 +59,7 @@ def build_parser() -> argparse.ArgumentParser:
     meter_parser.add_argument("--timeout", type=int, default=180)
     meter_parser.add_argument("--json", action="store_true", dest="as_json")
 
-    setup_parser = subparsers.add_parser("setup", help="Plan consent-based environment setup")
+    setup_parser = subparsers.add_parser("setup", help="Consent-based environment setup")
     setup_subparsers = setup_parser.add_subparsers(dest="setup_command", required=True)
     setup_plan = setup_subparsers.add_parser(
         "plan", help="Describe downloads without applying them"
@@ -67,6 +68,13 @@ def build_parser() -> argparse.ArgumentParser:
     setup_plan.add_argument("--catalog", type=Path)
     setup_plan.add_argument("--output", type=Path)
     setup_plan.add_argument("--json", action="store_true", dest="as_json")
+    setup_apply = setup_subparsers.add_parser(
+        "apply", help="Apply an unexpired setup plan after explicit consent"
+    )
+    setup_apply.add_argument("--plan", type=Path, required=True)
+    setup_apply.add_argument("--consent", required=True)
+    setup_apply.add_argument("--catalog", type=Path)
+    setup_apply.add_argument("--json", action="store_true", dest="as_json")
     return parser
 
 
@@ -113,12 +121,17 @@ def main(argv: list[str] | None = None) -> int:
         if args.command == "setup" and args.setup_command == "plan":
             pack_ids = [item.strip() for item in args.packs.split(",") if item.strip()]
             report = create_setup_plan(pack_ids, args.catalog)
-            if args.output:
-                args.output.parent.mkdir(parents=True, exist_ok=True)
-                args.output.write_text(
-                    json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-                )
-            return _emit(report, args.as_json)
+            plan_path = persist_setup_plan(report, args.output)
+            return _emit({**report, "plan_path": str(plan_path)}, args.as_json)
+        if args.command == "setup" and args.setup_command == "apply":
+            return _emit(
+                apply_setup_plan(
+                    args.plan,
+                    args.consent,
+                    catalog_path=args.catalog,
+                ),
+                args.as_json,
+            )
     except LedgerLineError as exc:
         payload = {
             "status": "error",

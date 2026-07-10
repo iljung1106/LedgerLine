@@ -116,9 +116,7 @@ def _meta_track(piece: Piece) -> mido.MidiTrack:
             )
         )
     for change in piece.tempo_changes:
-        time = piece.time_at(change.measure)
-        beat_offset = (change.beat - 1) * Fraction(4, time.beat_type)
-        tick = starts[change.measure] + _ticks(beat_offset)
+        tick = _anchor_tick(piece, starts, change.measure, change.beat)
         events.append(
             TimedMessage(
                 tick,
@@ -152,6 +150,75 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
         ),
     ]
     starts = _measure_starts(piece)
+    for control in part.controls:
+        tick = _anchor_tick(piece, starts, control.measure, control.beat)
+        if control.kind == "cc":
+            events.append(
+                TimedMessage(
+                    tick,
+                    4,
+                    mido.Message(
+                        "control_change",
+                        channel=channel,
+                        control=int(control.controller),
+                        value=int(control.value),
+                        time=0,
+                    ),
+                )
+            )
+        elif control.kind == "pedal":
+            if control.pedal_action == "change":
+                events.append(
+                    TimedMessage(
+                        tick,
+                        4,
+                        mido.Message(
+                            "control_change", channel=channel, control=64, value=0, time=0
+                        ),
+                    )
+                )
+                events.append(
+                    TimedMessage(
+                        tick,
+                        5,
+                        mido.Message(
+                            "control_change", channel=channel, control=64, value=127, time=0
+                        ),
+                    )
+                )
+            else:
+                value = 127 if control.pedal_action == "down" else 0
+                events.append(
+                    TimedMessage(
+                        tick,
+                        4,
+                        mido.Message(
+                            "control_change", channel=channel, control=64, value=value, time=0
+                        ),
+                    )
+                )
+        elif control.kind == "keyswitch":
+            note = profile.keyswitches[str(control.keyswitch)].midi
+            events.append(
+                TimedMessage(
+                    tick,
+                    6,
+                    mido.Message(
+                        "note_on",
+                        channel=channel,
+                        note=note,
+                        velocity=control.velocity,
+                        time=0,
+                    ),
+                )
+            )
+            events.append(
+                TimedMessage(
+                    tick + _ticks(control.duration),
+                    0,
+                    mido.Message("note_off", channel=channel, note=note, velocity=0, time=0),
+                )
+            )
     active_ties: dict[tuple[str, int], bool] = {}
     dynamic_by_voice: dict[str, int] = {}
     for number in range(1, piece.measures + 1):
@@ -198,7 +265,7 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                         events.append(
                             TimedMessage(
                                 cursor,
-                                5,
+                                10,
                                 mido.Message(
                                     "note_on",
                                     channel=channel,
@@ -254,6 +321,16 @@ def _ticks(duration: Fraction) -> int:
     if value.denominator != 1:
         raise ValueError(f"duration cannot be represented at {TPQ} TPQ: {duration}")
     return value.numerator
+
+
+def _anchor_tick(
+    piece: Piece,
+    starts: dict[int, int],
+    measure: int,
+    beat: Fraction,
+) -> int:
+    beat_offset = (beat - 1) * Fraction(1, piece.time_at(measure).beat_type)
+    return starts[measure] + _ticks(beat_offset)
 
 
 def _delta_track(events: list[TimedMessage]) -> mido.MidiTrack:

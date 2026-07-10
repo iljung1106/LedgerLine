@@ -5,6 +5,10 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+.cache/
+packs/private/
+packs/catalog.local.json
+packs/catalog.local.json.sig
 *.egg-info/
 .coverage
 htmlcov/
@@ -16,4 +20,3 @@ htmlcov/
 *.sfz
 *.flac
 *.llpack
-
