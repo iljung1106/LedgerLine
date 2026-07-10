@@ -1,0 +1,15 @@
+format: 1
+id: starter.acoustic-grand-piano
+name: Acoustic Grand Piano
+family: keyboard
+range:
+  absolute: [A0, C8]
+  comfortable: [A1, C7]
+transposition: 0
+midi:
+  bank_msb: 0
+  bank_lsb: 0
+  program: 0
+clef: {sign: G, line: 2}
+articulations: [staccato, tenuto, accent, marcato]
+

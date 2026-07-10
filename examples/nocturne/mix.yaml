@@ -1,0 +1,13 @@
+format: 1
+master:
+  gain_db: -1.0
+  target_lufs: -16.0
+  true_peak_ceiling_db: -1.0
+  loudness_range_lu: 11.0
+  loudness_tolerance_lu: 0.5
+reverb:
+  delays_ms: "40|55"
+  decays: "0.30|0.20"
+tracks:
+  piano: {gain_db: -4.0, pan: 0.1, reverb_send_db: -12.0}
+  cello: {gain_db: -3.0, pan: -0.2, reverb_send_db: -10.0}

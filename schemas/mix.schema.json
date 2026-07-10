@@ -1,0 +1,44 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/mix.schema.json",
+  "title": "LedgerLine mix",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "master", "tracks"],
+  "properties": {
+    "format": {"const": 1},
+    "master": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gain_db": {"type": "number"},
+        "target_lufs": {"type": "number"},
+        "true_peak_ceiling_db": {"type": "number", "maximum": 0},
+        "loudness_range_lu": {"type": "number", "exclusiveMinimum": 0},
+        "loudness_tolerance_lu": {"type": "number", "minimum": 0}
+      }
+    },
+    "reverb": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "delays_ms": {"type": "string"},
+        "decays": {"type": "string"}
+      }
+    },
+    "tracks": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "gain_db": {"type": "number"},
+          "pan": {"type": "number", "minimum": -1, "maximum": 1},
+          "reverb_send_db": {"type": "number"}
+        }
+      }
+    }
+  }
+}
+

@@ -1,0 +1,15 @@
+format: 1
+id: starter.violin
+name: Violin
+family: strings
+range:
+  absolute: [G3, A7]
+  comfortable: [G3, E7]
+transposition: 0
+midi:
+  bank_msb: 0
+  bank_lsb: 0
+  program: 40
+clef: {sign: G, line: 2}
+articulations: [staccato, tenuto, accent, marcato]
+

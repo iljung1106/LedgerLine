@@ -1,0 +1,31 @@
+{
+  "schema_version": "1",
+  "packs": [
+    {
+      "id": "starter",
+      "version": "0.1.0-planned",
+      "display_name": "LedgerLine Starter",
+      "status": "audit_required",
+      "approx_download_bytes": 39900972,
+      "license": "MIT",
+      "source_page": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/",
+      "artifacts": [],
+      "blocked_reasons": [
+        "The upstream artifact has no official checksum; LedgerLine must pin its own audited SHA-256."
+      ]
+    },
+    {
+      "id": "core",
+      "version": "0.1.0-planned",
+      "display_name": "LedgerLine Core",
+      "status": "designing",
+      "approx_download_bytes": 4000000000,
+      "license": "LicenseRef-Mixed-Audited",
+      "source_page": "https://versilian-studios.com/vsco-community/",
+      "artifacts": [],
+      "blocked_reasons": [
+        "The reproducible SF3 build recipes and per-sample license manifest are not complete."
+      ]
+    }
+  ]
+}

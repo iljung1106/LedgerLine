@@ -1,0 +1,15 @@
+format: 1
+id: starter.flute
+name: Flute
+family: woodwinds
+range:
+  absolute: [C4, D7]
+  comfortable: [D4, C7]
+transposition: 0
+midi:
+  bank_msb: 0
+  bank_lsb: 0
+  program: 73
+clef: {sign: G, line: 2}
+articulations: [staccato, tenuto, accent, marcato]
+

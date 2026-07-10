@@ -1,0 +1,15 @@
+format: 1
+id: starter.cello
+name: Cello
+family: strings
+range:
+  absolute: [C2, C6]
+  comfortable: [C2, G5]
+transposition: 0
+midi:
+  bank_msb: 0
+  bank_lsb: 0
+  program: 42
+clef: {sign: F, line: 4}
+articulations: [staccato, tenuto, accent, marcato]
+

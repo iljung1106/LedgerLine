@@ -1,0 +1,46 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ledgerline"
+version = "0.1.0"
+description = "An agent-native music authoring, inspection, and rendering workbench"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+authors = [{ name = "iljung1106" }]
+dependencies = [
+  "mido>=1.3.3,<2",
+  "PyYAML>=6.0.2,<7",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3,<9",
+  "ruff>=0.11,<1",
+]
+
+[project.scripts]
+ledgerline = "ledgerline.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/ledgerline"]
+
+[tool.hatch.build]
+include = [
+  "src/ledgerline/data/**/*.yaml",
+  "src/ledgerline/data/**/*.json",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+

@@ -1,0 +1,79 @@
+{
+  "schema_version": "1",
+  "notice": "Research candidates only. Nothing in this file is trusted by setup until repackaged into a signed llpack.",
+  "candidates": [
+    {
+      "id": "musescore-general",
+      "version": "0.2.0",
+      "role": "starter",
+      "format": "sf3",
+      "size_bytes": 39900972,
+      "license": "MIT",
+      "source_page": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/",
+      "source_url": "https://ftp.osuosl.org/pub/musescore/soundfont/MuseScore_General/MuseScore_General.sf3",
+      "upstream_sha256": null,
+      "decision": "audit_and_repackage"
+    },
+    {
+      "id": "vsco-2-ce",
+      "version": "1.1.0-source-candidate",
+      "role": "core-orchestra",
+      "format": "sfz",
+      "size_bytes": null,
+      "license": "CC0-1.0",
+      "source_page": "https://versilian-studios.com/vsco-community/",
+      "source_url": "https://github.com/sgossner/VSCO-2-CE/releases/tag/1.1.0",
+      "upstream_sha256": null,
+      "decision": "select_samples_build_sf3_and_repackage"
+    },
+    {
+      "id": "virtuosity-drums",
+      "version": "0.925",
+      "role": "core-rhythm",
+      "format": "sfz",
+      "size_bytes": 1227151376,
+      "license": "CC0-1.0",
+      "source_page": "https://versilian-studios.com/virtuosity-drums/",
+      "source_url": "https://github.com/sfzinstruments/virtuosity_drums/releases/download/v0.925/Virtuosity_Drums_v0.925.zip",
+      "upstream_sha256": "c6c5d0fe11a394e94be3146a950c3377ec102cb57d189d5a23cec26183d1963a",
+      "decision": "simplify_mapping_test_and_repackage"
+    },
+    {
+      "id": "growlybass",
+      "version": "1.002",
+      "role": "core-band",
+      "format": "sfz",
+      "size_bytes": 167454256,
+      "license": "CC0-1.0",
+      "source_page": "https://github.com/sfzinstruments/karoryfer.growlybass",
+      "source_url": "https://github.com/sfzinstruments/karoryfer.growlybass/releases/download/v1.002/Karoryfer.Growlybass.v1.002.zip",
+      "upstream_sha256": null,
+      "decision": "hash_test_and_repackage"
+    },
+    {
+      "id": "emilyguitar",
+      "version": "1.001",
+      "role": "core-band",
+      "format": "sfz",
+      "size_bytes": 103484350,
+      "license": "CC0-1.0",
+      "source_page": "https://github.com/sfzinstruments/karoryfer.emilyguitar",
+      "source_url": "https://github.com/sfzinstruments/karoryfer.emilyguitar/releases/download/v1.001/Karoryfer.Emilyguitar.v1.001.zip",
+      "upstream_sha256": null,
+      "decision": "hash_test_and_repackage"
+    },
+    {
+      "id": "salamander-grand-piano",
+      "version": "3",
+      "role": "core-keys",
+      "format": "wav-sfz-source",
+      "size_bytes": 1448107335,
+      "license": "CC-BY-3.0",
+      "source_page": "https://archive.org/details/SalamanderGrandPianoV3",
+      "source_url": "https://archive.org/download/SalamanderGrandPianoV3/SalamanderGrandPianoV3_48khz24bit.tar.bz2",
+      "upstream_sha1": "90dfa11fa1f812a1cd956f38e66bc82820c918aa",
+      "decision": "create_mapping_attribute_changes_and_repackage"
+    }
+  ]
+}
+

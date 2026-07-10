@@ -1,0 +1,17 @@
+format: 1
+part: cello
+measures:
+  "1":
+    v1:
+      - {p: C3, d: 1/1, dyn: p, art: tenuto}
+  "2":
+    v1:
+      - {p: F2, d: 1/2, dyn: mp}
+      - {p: G2, d: 1/2}
+  "3":
+    v1:
+      - {p: Ab2, d: 1/1, dyn: mp, art: tenuto}
+  "4":
+    v1:
+      - {p: C3, d: 1/1, dyn: p, art: tenuto}
+

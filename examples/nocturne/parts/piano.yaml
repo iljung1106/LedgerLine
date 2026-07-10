@@ -1,0 +1,24 @@
+format: 1
+part: piano
+measures:
+  "1":
+    v1:
+      - {p: [C4, Eb4, G4], d: 1/2, dyn: mp, art: tenuto}
+      - {p: [Ab3, C4, Eb4], d: 1/2}
+  "2":
+    v1:
+      - {p: [F3, Ab3, C4], d: 1/2, dyn: p}
+      - {p: [G3, B3, D4], d: 1/2, art: tenuto}
+  "3":
+    v1:
+      - {p: C5, d: 1/4, dyn: mp}
+      - {p: D5, d: 1/8}
+      - {p: Eb5, d: 1/8}
+      - {p: G5, d: 1/4, art: accent}
+      - {p: F5, d: 1/4}
+  "4":
+    v1:
+      - {p: Eb5, d: 1/4, dyn: p}
+      - {p: D5, d: 1/4}
+      - {p: C5, d: 1/2, art: tenuto}
+

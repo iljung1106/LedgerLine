@@ -1,0 +1,70 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/piece.schema.json",
+  "title": "LedgerLine piece",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "title", "measures", "time", "tempo", "key", "parts"],
+  "properties": {
+    "format": {"const": 1},
+    "title": {"type": "string", "minLength": 1},
+    "measures": {"type": "integer", "minimum": 1},
+    "time": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["measure", "beats", "beat_type"],
+        "properties": {
+          "measure": {"type": "integer", "minimum": 1},
+          "beats": {"type": "integer", "minimum": 1},
+          "beat_type": {"enum": [1, 2, 4, 8, 16]}
+        }
+      }
+    },
+    "tempo": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["at", "bpm"],
+        "properties": {
+          "at": {"type": "string", "pattern": "^[1-9][0-9]*:[1-9][0-9]*(\\.[0-9]+)?$"},
+          "bpm": {"type": "number", "exclusiveMinimum": 0}
+        }
+      }
+    },
+    "key": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["measure", "fifths", "mode"],
+        "properties": {
+          "measure": {"type": "integer", "minimum": 1},
+          "fifths": {"type": "integer", "minimum": -7, "maximum": 7},
+          "mode": {"enum": ["major", "minor"]}
+        }
+      }
+    },
+    "parts": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "profile", "file"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+          "name": {"type": "string"},
+          "profile": {"type": "string"},
+          "file": {"type": "string"}
+        }
+      }
+    }
+  }
+}
+

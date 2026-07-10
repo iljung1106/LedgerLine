@@ -1,0 +1,19 @@
+format: 1
+title: Ledgerline Nocturne Sketch
+measures: 4
+time:
+  - {measure: 1, beats: 4, beat_type: 4}
+tempo:
+  - {at: "1:1", bpm: 72}
+key:
+  - {measure: 1, fifths: -3, mode: minor}
+parts:
+  - id: piano
+    name: Piano
+    profile: starter.acoustic-grand-piano
+    file: parts/piano.yaml
+  - id: cello
+    name: Cello
+    profile: starter.cello
+    file: parts/cello.yaml
+
