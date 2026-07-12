@@ -24,7 +24,7 @@ jobs:
       - name: Lint
         run: python -m ruff check src tests scripts
       - name: Build wheel
-        run: python -m pip wheel . --no-deps --no-build-isolation --wheel-dir dist-ci
+        run: python -m pip wheel . --no-deps --wheel-dir dist-ci
       - name: Compile examples
         run: |
           python -m ledgerline validate examples/nocturne --json
