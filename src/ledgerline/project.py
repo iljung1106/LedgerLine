@@ -13,6 +13,7 @@ from ledgerline.model import (
     KeyChange,
     Measure,
     Part,
+    PerformanceBinding,
     Piece,
     StaffDefinition,
     TempoChange,
@@ -90,6 +91,7 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
                 "clef",
                 "articulations",
                 "keyswitches",
+                "performance",
             },
             str(path),
         )
@@ -113,6 +115,7 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
             if normalized_name in keyswitches:
                 raise ValueError(f"duplicate keyswitch name: {normalized_name!r}")
             keyswitches[normalized_name] = parse_pitch(pitch)
+        performance = _load_performance_bindings(data.get("performance", {}), path)
         return InstrumentProfile(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -129,12 +132,54 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
             clef_line=int(clef["line"]),
             articulations=frozenset(data.get("articulations", [])),
             keyswitches=keyswitches,
+            performance=performance,
         )
     except (KeyError, TypeError, ValueError) as exc:
         raise ValidationError(
             f"invalid profile: {path}",
             [Diagnostic("error", "profile.invalid", str(path), str(exc))],
         ) from exc
+
+
+def _load_performance_bindings(raw: object, path: Path) -> dict[str, PerformanceBinding]:
+    if not isinstance(raw, dict):
+        raise ValueError("performance must be a mapping")
+    bindings: dict[str, PerformanceBinding] = {}
+    for name, value in raw.items():
+        binding_path = f"{path}:performance.{name}"
+        if not isinstance(name, str) or not name.strip() or not isinstance(value, dict):
+            raise ValueError(f"{binding_path} must be a named mapping")
+        _reject_unknown(
+            value,
+            {"type", "controller", "parameter", "min", "max", "default"},
+            binding_path,
+        )
+        binding_type = value.get("type")
+        if binding_type not in {"cc", "plugin_parameter", "mix"}:
+            raise ValueError(f"{binding_path}.type is unsupported: {binding_type!r}")
+        controller = value.get("controller")
+        parameter = value.get("parameter")
+        if binding_type == "cc":
+            if isinstance(controller, bool) or not isinstance(controller, int):
+                raise ValueError(f"{binding_path}.controller must be an integer")
+            if not 1 <= controller <= 127 or controller in {32, 64}:
+                raise ValueError(f"{binding_path}.controller is reserved or outside MIDI range")
+        elif not isinstance(parameter, str) or not parameter.strip():
+            raise ValueError(f"{binding_path}.parameter must be a non-empty string")
+        minimum = float(value.get("min", 0.0))
+        maximum = float(value.get("max", 127.0 if binding_type == "cc" else 1.0))
+        default = float(value.get("default", 0.5))
+        if maximum <= minimum or not 0.0 <= default <= 1.0:
+            raise ValueError(f"{binding_path} has invalid range or default")
+        bindings[name.strip()] = PerformanceBinding(
+            type=str(binding_type),
+            controller=controller,
+            parameter=parameter.strip() if isinstance(parameter, str) else None,
+            minimum=minimum,
+            maximum=maximum,
+            default=default,
+        )
+    return bindings
 
 
 def load_piece(root: str | Path) -> Piece:
@@ -212,6 +257,9 @@ def load_piece(root: str | Path) -> Piece:
         parts=tuple(parts),
         profiles=profiles,
     )
+    from ledgerline.motifs import apply_project_motifs
+
+    piece = apply_project_motifs(piece)
     diagnostics.extend(validate_piece(piece))
     if any(item.severity == "error" for item in diagnostics):
         raise ValidationError("project validation failed", diagnostics)
@@ -254,9 +302,7 @@ def _load_part(
         diagnostics.append(
             Diagnostic("error", "part.staves_invalid", f"{source_path}:staves", str(exc))
         )
-        staves = (
-            StaffDefinition(1, "staff-1", profile.clef_sign, profile.clef_line),
-        )
+        staves = (StaffDefinition(1, "staff-1", profile.clef_sign, profile.clef_line),)
 
     raw_measures = data.get("measures")
     if not isinstance(raw_measures, dict):
@@ -621,6 +667,21 @@ def _validate_controls(
                     "instrument.keyswitch_unsupported",
                     path,
                     f"{profile.id} does not declare keyswitch {control.keyswitch!r}.",
+                )
+            )
+        elif (
+            control.kind == "performance"
+            and control.performance_parameter not in profile.performance
+        ):
+            diagnostics.append(
+                Diagnostic(
+                    "error",
+                    "instrument.performance_unsupported",
+                    path,
+                    (
+                        f"{profile.id} does not declare performance parameter "
+                        f"{control.performance_parameter!r}."
+                    ),
                 )
             )
     if pedal_down:

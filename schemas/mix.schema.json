@@ -6,18 +6,8 @@
   "additionalProperties": false,
   "required": ["format", "master", "tracks"],
   "properties": {
-    "format": {"const": 1},
-    "master": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "gain_db": {"type": "number"},
-        "target_lufs": {"type": "number"},
-        "true_peak_ceiling_db": {"type": "number", "maximum": 0},
-        "loudness_range_lu": {"type": "number", "exclusiveMinimum": 0},
-        "loudness_tolerance_lu": {"type": "number", "minimum": 0}
-      }
-    },
+    "format": {"enum": [1, 2]},
+    "master": {"$ref": "#/$defs/master"},
     "reverb": {
       "type": "object",
       "additionalProperties": false,
@@ -26,19 +16,109 @@
         "decays": {"type": "string"}
       }
     },
+    "buses": {
+      "type": "object",
+      "additionalProperties": {"$ref": "#/$defs/node"}
+    },
     "tracks": {
       "type": "object",
       "minProperties": 1,
       "additionalProperties": {
-        "type": "object",
-        "additionalProperties": false,
-        "properties": {
-          "gain_db": {"type": "number"},
-          "pan": {"type": "number", "minimum": -1, "maximum": 1},
-          "reverb_send_db": {"type": "number"}
+        "oneOf": [
+          {"$ref": "#/$defs/node"},
+          {"$ref": "#/$defs/legacyTrack"}
+        ]
+      }
+    }
+  },
+  "$defs": {
+    "master": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gain_db": {"type": "number"},
+        "target_lufs": {"type": "number"},
+        "true_peak_ceiling_db": {"type": "number", "maximum": 0},
+        "loudness_range_lu": {"type": "number", "exclusiveMinimum": 0},
+        "loudness_tolerance_lu": {"type": "number", "minimum": 0},
+        "inserts": {"type": "array", "items": {"$ref": "#/$defs/processor"}}
+      }
+    },
+    "node": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gain_db": {"type": "number"},
+        "pan": {"type": "number", "minimum": -1, "maximum": 1},
+        "output": {"type": "string", "minLength": 1},
+        "sends": {"type": "object", "additionalProperties": {"type": "number"}},
+        "inserts": {"type": "array", "items": {"$ref": "#/$defs/processor"}}
+      }
+    },
+    "legacyTrack": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "gain_db": {"type": "number"},
+        "pan": {"type": "number", "minimum": -1, "maximum": 1},
+        "reverb_send_db": {"type": "number"}
+      }
+    },
+    "processor": {
+      "oneOf": [
+        {"$ref": "#/$defs/eq"},
+        {"$ref": "#/$defs/compressor"},
+        {"$ref": "#/$defs/reverbProcessor"}
+      ]
+    },
+    "eq": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"const": "eq"},
+        "highpass_hz": {"type": "number", "minimum": 10, "maximum": 24000},
+        "lowpass_hz": {"type": "number", "minimum": 10, "maximum": 24000},
+        "bands": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["frequency_hz", "gain_db"],
+            "properties": {
+              "frequency_hz": {"type": "number", "minimum": 10, "maximum": 24000},
+              "gain_db": {"type": "number", "minimum": -24, "maximum": 24},
+              "q": {"type": "number", "minimum": 0.05, "maximum": 30}
+            }
+          }
         }
+      }
+    },
+    "compressor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"const": "compressor"},
+        "threshold_db": {"type": "number", "minimum": -100, "maximum": 0},
+        "ratio": {"type": "number", "minimum": 1, "maximum": 20},
+        "attack_ms": {"type": "number", "exclusiveMinimum": 0, "maximum": 2000},
+        "release_ms": {"type": "number", "exclusiveMinimum": 0, "maximum": 9000},
+        "makeup_db": {"type": "number"},
+        "knee_db": {"type": "number"}
+      }
+    },
+    "reverbProcessor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": {"const": "reverb"},
+        "in_gain": {"type": "number"},
+        "out_gain": {"type": "number"},
+        "delays_ms": {"type": "string"},
+        "decays": {"type": "string"}
       }
     }
   }
 }
-

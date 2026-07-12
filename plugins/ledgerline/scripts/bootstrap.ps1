@@ -49,15 +49,30 @@ function Resolve-BasePython {
 }
 
 $basePython = Resolve-BasePython
+$runtimeVersion = $null
+if (Test-Path -LiteralPath $runtimePython -PathType Leaf) {
+    $runtimeVersion = & $runtimePython -c "import ledgerline; print(ledgerline.__version__)" 2>$null
+    if ($LASTEXITCODE -ne 0) {
+        $runtimeVersion = $null
+    }
+}
+$planStatus = if (-not (Test-Path -LiteralPath $runtimePython -PathType Leaf)) {
+    "ready"
+} elseif ($runtimeVersion -eq "0.3.0") {
+    "already_installed"
+} else {
+    "upgrade_required"
+}
 $report = [ordered]@{
     schema_version = "1"
-    status = if (Test-Path -LiteralPath $runtimePython) { "already_installed" } else { "ready" }
+    status = $planStatus
     action = "create_managed_python_venv"
     base_python = $basePython.Exe
     destination = $venv
     bundled_wheel = $wheel.FullName
+    installed_version = $runtimeVersion
     network_sources = @("https://pypi.org/simple")
-    dependencies = @("cryptography>=45,<47", "mido>=1.3.3,<2", "PyYAML>=6.0.2,<7")
+    dependencies = @("cryptography>=45,<47", "mido>=1.3.3,<2", "numpy>=2,<3", "PyYAML>=6.0.2,<7")
     system_changes = @()
     modifies_path = $false
     modifies_registry = $false
@@ -78,8 +93,16 @@ if (-not (Test-Path -LiteralPath $runtimePython)) {
 if ($LASTEXITCODE -ne 0) {
     throw "pip failed to install the bundled LedgerLine wheel."
 }
+& $runtimePython -m pip install --disable-pip-version-check --no-input --force-reinstall --no-deps $wheel.FullName
+if ($LASTEXITCODE -ne 0) {
+    throw "pip failed to refresh the bundled LedgerLine wheel."
+}
+& $runtimePython -m pip check
+if ($LASTEXITCODE -ne 0) {
+    throw "The managed LedgerLine runtime has unsatisfied dependencies."
+}
 $installed = & $runtimePython -c "import ledgerline; print(ledgerline.__version__)"
-if ($LASTEXITCODE -ne 0 -or $installed -ne "0.2.0") {
+if ($LASTEXITCODE -ne 0 -or $installed -ne "0.3.0") {
     throw "LedgerLine runtime verification failed."
 }
 $env:LEDGERLINE_HOME = $LedgerLineHome

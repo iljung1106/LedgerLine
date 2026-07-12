@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Iterable
 from dataclasses import dataclass
 from fractions import Fraction
@@ -8,6 +9,7 @@ from pathlib import Path
 import mido
 
 from ledgerline.model import DYNAMIC_VELOCITY, Event, Part, Piece
+from ledgerline.timeline import Timeline
 
 TPQ = 480
 WHOLE_TICKS = TPQ * 4
@@ -22,7 +24,7 @@ class TimedMessage:
 
 def compile_midi(piece: Piece, output: Path, selected_parts: Iterable[str] | None = None) -> None:
     selected = set(selected_parts) if selected_parts is not None else None
-    midi = mido.MidiFile(type=1, ticks_per_beat=TPQ)
+    midi = mido.MidiFile(type=1, ticks_per_beat=TPQ, charset="utf-8")
     midi.tracks.append(_meta_track(piece))
     melodic_channel = 0
     for part in piece.parts:
@@ -149,7 +151,15 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
             0, 3, mido.Message("program_change", channel=channel, program=profile.program, time=0)
         ),
     ]
+    if any(
+        event.pitch_cents or event.expression or event.gestures
+        for measure in part.measures.values()
+        for voice_events in measure.voices.values()
+        for event in voice_events
+    ):
+        events.extend(_pitch_bend_range_messages(channel))
     starts = _measure_starts(piece)
+    timeline = Timeline(piece)
     for control in part.controls:
         tick = _anchor_tick(piece, starts, control.measure, control.beat)
         if control.kind == "cc":
@@ -219,6 +229,26 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                     mido.Message("note_off", channel=channel, note=note, velocity=0, time=0),
                 )
             )
+        elif control.kind == "performance":
+            binding = profile.performance[str(control.performance_parameter)]
+            if binding.type == "cc":
+                value = round(
+                    binding.minimum
+                    + float(control.performance_value) * (binding.maximum - binding.minimum)
+                )
+                events.append(
+                    TimedMessage(
+                        tick,
+                        4,
+                        mido.Message(
+                            "control_change",
+                            channel=channel,
+                            control=int(binding.controller),
+                            value=max(0, min(127, value)),
+                            time=0,
+                        ),
+                    )
+                )
     active_ties: dict[tuple[str, int], bool] = {}
     dynamic_by_voice: dict[str, int] = {}
     for number in range(1, piece.measures + 1):
@@ -239,6 +269,19 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                 duration = _ticks(event.duration)
                 gate = _articulation_gate(event)
                 end_tick = cursor + max(1, round(duration * gate))
+                start_whole = Fraction(cursor, WHOLE_TICKS)
+                expression_seconds = timeline.seconds_at_whole(
+                    start_whole + event.duration
+                ) - timeline.seconds_at_whole(start_whole)
+                _append_note_expression(
+                    events,
+                    event,
+                    cursor,
+                    duration,
+                    end_tick,
+                    channel,
+                    expression_seconds,
+                )
                 for pitch in event.pitches:
                     sounding = pitch.midi + profile.transposition
                     tie_key = (voice_name, sounding)
@@ -310,6 +353,98 @@ def _articulation_velocity(event: Event, velocity: int) -> int:
     elif event.articulation == "marcato":
         velocity += 16
     return max(1, min(127, velocity))
+
+
+def _pitch_bend_range_messages(channel: int) -> list[TimedMessage]:
+    return [
+        TimedMessage(0, 4, mido.Message("control_change", channel=channel, control=101, value=0)),
+        TimedMessage(0, 5, mido.Message("control_change", channel=channel, control=100, value=0)),
+        TimedMessage(0, 6, mido.Message("control_change", channel=channel, control=6, value=2)),
+        TimedMessage(0, 7, mido.Message("control_change", channel=channel, control=38, value=0)),
+        TimedMessage(0, 8, mido.Message("control_change", channel=channel, control=101, value=127)),
+        TimedMessage(0, 9, mido.Message("control_change", channel=channel, control=100, value=127)),
+    ]
+
+
+def _append_note_expression(
+    messages: list[TimedMessage],
+    event: Event,
+    start_tick: int,
+    duration: int,
+    end_tick: int,
+    channel: int,
+    duration_seconds: float,
+) -> None:
+    points = list(event.expression)
+    for gesture in event.gestures:
+        if gesture.type == "nonghyeon":
+            cycles = max(0.25, gesture.rate_hz * duration_seconds)
+            samples = min(64, max(8, round(cycles * 8)))
+            for index in range(samples + 1):
+                position = index / samples
+                value = gesture.depth_cents * math.sin(2 * math.pi * cycles * position)
+                points.append(_point("pitch", position, value))
+        elif gesture.type in {"chuseong", "toeseong"}:
+            sign = 1.0 if gesture.type == "chuseong" else -1.0
+            points.extend(
+                [
+                    _point("pitch", 0.0, 0.0),
+                    _point("pitch", gesture.position, 0.0),
+                    _point("pitch", 1.0, sign * gesture.depth_cents),
+                ]
+            )
+        elif gesture.type == "breath":
+            points.append(_point("pressure", 0.0, 1.0 - gesture.amount))
+        elif gesture.type == "pluck_position":
+            points.append(_point("timbre", 0.0, gesture.amount))
+    if event.pitch_cents and not any(point.parameter == "pitch" for point in points):
+        points.append(_point("pitch", 0.0, 0.0))
+    for point in sorted(points, key=lambda item: (item.position, item.parameter)):
+        tick = start_tick + round(duration * point.position)
+        if point.parameter == "pitch":
+            cents = event.pitch_cents + point.value
+            messages.append(
+                TimedMessage(
+                    tick,
+                    9,
+                    mido.Message("pitchwheel", channel=channel, pitch=_pitchwheel(cents)),
+                )
+            )
+        elif point.parameter == "pressure":
+            messages.append(
+                TimedMessage(
+                    tick,
+                    9,
+                    mido.Message("aftertouch", channel=channel, value=round(point.value * 127)),
+                )
+            )
+        elif point.parameter == "timbre":
+            messages.append(
+                TimedMessage(
+                    tick,
+                    9,
+                    mido.Message(
+                        "control_change",
+                        channel=channel,
+                        control=74,
+                        value=round(point.value * 127),
+                    ),
+                )
+            )
+    if points or event.pitch_cents:
+        messages.append(
+            TimedMessage(end_tick, 1, mido.Message("pitchwheel", channel=channel, pitch=0))
+        )
+
+
+def _point(parameter: str, position: float, value: float):
+    from ledgerline.model import ExpressionPoint
+
+    return ExpressionPoint(parameter, position, value)
+
+
+def _pitchwheel(cents: float) -> int:
+    return max(-8192, min(8191, round(cents / 200.0 * 8192)))
 
 
 def _articulation_gate(event: Event) -> float:

@@ -12,4 +12,8 @@ midi:
   program: 0
 clef: {sign: G, line: 2}
 articulations: [staccato, tenuto, accent, marcato]
-
+performance:
+  expression: {type: cc, controller: 11, min: 0, max: 127, default: 0.65}
+  attack: {type: cc, controller: 73, min: 0, max: 127, default: 0.5}
+  brightness: {type: cc, controller: 74, min: 0, max: 127, default: 0.5}
+  distance: {type: cc, controller: 91, min: 0, max: 127, default: 0.25}

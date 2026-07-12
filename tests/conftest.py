@@ -10,5 +10,5 @@ import pytest
 def example_project(tmp_path: Path) -> Path:
     source = Path(__file__).parents[1] / "examples" / "nocturne"
     target = tmp_path / "nocturne"
-    shutil.copytree(source, target)
+    shutil.copytree(source, target, ignore=shutil.ignore_patterns("build"))
     return target

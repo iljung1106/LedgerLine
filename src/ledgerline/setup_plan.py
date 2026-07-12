@@ -62,9 +62,7 @@ def create_setup_plan(
                     "entry_limit": artifact["entry_limit"],
                     "license": pack["license"],
                     "attribution": pack["attribution"],
-                    "target": str(
-                        ledgerline_home() / "packs" / pack["id"] / pack["version"]
-                    ),
+                    "target": str(ledgerline_home() / "packs" / pack["id"] / pack["version"]),
                     "requires_consent": True,
                 }
             )
@@ -110,7 +108,7 @@ def load_setup_plan(path: Path) -> dict:
     plan = json.loads(
         raw,
         object_pairs_hook=_pairs_without_duplicates,
-        parse_constant=lambda value: (_reject_json_constant(value)),
+        parse_constant=lambda value: _reject_json_constant(value),
     )
     if not isinstance(plan, dict):
         raise ValueError("setup plan must be a JSON object")

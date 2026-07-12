@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from fractions import Fraction
@@ -94,6 +95,9 @@ class Event:
     tie: str | None = None
     velocity: int | None = None
     staff: int | None = None
+    pitch_cents: float = 0.0
+    expression: tuple[ExpressionPoint, ...] = ()
+    gestures: tuple[PerformanceGesture, ...] = ()
 
     @property
     def is_rest(self) -> bool:
@@ -107,6 +111,22 @@ class Measure:
 
 
 @dataclass(frozen=True, slots=True)
+class ExpressionPoint:
+    parameter: str
+    position: float
+    value: float
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceGesture:
+    type: str
+    depth_cents: float = 0.0
+    rate_hz: float = 0.0
+    position: float = 0.5
+    amount: float = 0.5
+
+
+@dataclass(frozen=True, slots=True)
 class ControlEvent:
     measure: int
     beat: Fraction
@@ -115,6 +135,8 @@ class ControlEvent:
     value: int | None = None
     pedal_action: str | None = None
     keyswitch: str | None = None
+    performance_parameter: str | None = None
+    performance_value: float | None = None
     velocity: int = 64
     duration: Fraction = Fraction(1, 32)
 
@@ -180,6 +202,17 @@ class InstrumentProfile:
     clef_line: int = 2
     articulations: frozenset[str] = frozenset(SUPPORTED_ARTICULATIONS)
     keyswitches: dict[str, Pitch] = field(default_factory=dict)
+    performance: dict[str, PerformanceBinding] = field(default_factory=dict)
+
+
+@dataclass(frozen=True, slots=True)
+class PerformanceBinding:
+    type: str
+    controller: int | None = None
+    parameter: str | None = None
+    minimum: float = 0.0
+    maximum: float = 127.0
+    default: float = 0.5
 
 
 @dataclass(frozen=True, slots=True)
@@ -192,6 +225,7 @@ class Piece:
     key_changes: tuple[KeyChange, ...]
     parts: tuple[Part, ...]
     profiles: dict[str, InstrumentProfile] = field(repr=False)
+    motif_expansions: tuple[dict[str, Any], ...] = field(default=(), repr=False)
 
     def time_at(self, measure: int) -> TimeChange:
         candidates = [change for change in self.time_changes if change.measure <= measure]
@@ -203,7 +237,7 @@ class Piece:
 
 
 def event_from_dict(data: dict[str, Any]) -> Event:
-    unknown = sorted(set(data) - {"p", "r", "d", "dyn", "art", "tie", "vel", "staff"})
+    unknown = sorted(set(data) - {"p", "r", "d", "dyn", "art", "tie", "vel", "staff", "expr"})
     if unknown:
         raise ValueError(f"unknown event fields: {', '.join(unknown)}")
     duration = parse_duration(str(data["d"]))
@@ -236,10 +270,9 @@ def event_from_dict(data: dict[str, Any]) -> Event:
         if not 1 <= velocity <= 127:
             raise ValueError("velocity must be between 1 and 127")
     staff = data.get("staff")
-    if staff is not None and (
-        isinstance(staff, bool) or not isinstance(staff, int) or staff < 1
-    ):
+    if staff is not None and (isinstance(staff, bool) or not isinstance(staff, int) or staff < 1):
         raise ValueError("staff must be a positive integer")
+    pitch_cents, expression, gestures = _expression_from_dict(data.get("expr"))
     return Event(
         duration=duration,
         pitches=pitches,
@@ -248,7 +281,92 @@ def event_from_dict(data: dict[str, Any]) -> Event:
         tie=tie,
         velocity=velocity,
         staff=staff,
+        pitch_cents=pitch_cents,
+        expression=expression,
+        gestures=gestures,
     )
+
+
+def _expression_from_dict(
+    raw: object,
+) -> tuple[float, tuple[ExpressionPoint, ...], tuple[PerformanceGesture, ...]]:
+    if raw is None:
+        return 0.0, (), ()
+    if not isinstance(raw, dict):
+        raise ValueError("expr must be a mapping")
+    unknown = sorted(set(raw) - {"pitch_cents", "curves", "gestures"})
+    if unknown:
+        raise ValueError(f"expr has unknown fields: {', '.join(unknown)}")
+    pitch_cents = _finite_float(raw.get("pitch_cents", 0.0), "expr.pitch_cents")
+    if not -200.0 <= pitch_cents <= 200.0:
+        raise ValueError("expr.pitch_cents must be between -200 and 200")
+    curves = raw.get("curves", {})
+    if not isinstance(curves, dict):
+        raise ValueError("expr.curves must be a mapping")
+    points: list[ExpressionPoint] = []
+    for parameter, raw_points in curves.items():
+        if parameter not in {"pitch", "pressure", "timbre"}:
+            raise ValueError(f"unsupported expression curve: {parameter!r}")
+        if not isinstance(raw_points, list) or not raw_points:
+            raise ValueError(f"expr.curves.{parameter} must be a non-empty list")
+        positions = []
+        for index, raw_point in enumerate(raw_points):
+            if not isinstance(raw_point, dict) or set(raw_point) != {"at", "value"}:
+                raise ValueError(f"expr.curves.{parameter}[{index}] requires at and value")
+            position = _finite_float(raw_point["at"], "expression position")
+            value = _finite_float(raw_point["value"], "expression value")
+            if not 0.0 <= position <= 1.0:
+                raise ValueError("expression positions must be between 0 and 1")
+            if parameter in {"pressure", "timbre"} and not 0.0 <= value <= 1.0:
+                raise ValueError(f"{parameter} expression values must be between 0 and 1")
+            if parameter == "pitch" and not -200.0 <= value <= 200.0:
+                raise ValueError("pitch expression values must be between -200 and 200 cents")
+            positions.append(position)
+            points.append(ExpressionPoint(str(parameter), position, value))
+        if positions != sorted(positions) or len(set(positions)) != len(positions):
+            raise ValueError(f"expr.curves.{parameter} positions must be strictly increasing")
+    raw_gestures = raw.get("gestures", [])
+    if not isinstance(raw_gestures, list):
+        raise ValueError("expr.gestures must be a list")
+    gestures = tuple(_gesture_from_dict(item, index) for index, item in enumerate(raw_gestures))
+    return pitch_cents, tuple(points), gestures
+
+
+def _gesture_from_dict(raw: object, index: int) -> PerformanceGesture:
+    path = f"expr.gestures[{index}]"
+    if not isinstance(raw, dict):
+        raise ValueError(f"{path} must be a mapping")
+    kind = raw.get("type")
+    allowed = {
+        "nonghyeon": {"type", "depth_cents", "rate_hz"},
+        "chuseong": {"type", "depth_cents", "position"},
+        "toeseong": {"type", "depth_cents", "position"},
+        "breath": {"type", "amount"},
+        "pluck_position": {"type", "amount"},
+    }
+    if kind not in allowed:
+        raise ValueError(f"{path}.type is unsupported: {kind!r}")
+    unknown = sorted(set(raw) - allowed[str(kind)])
+    if unknown:
+        raise ValueError(f"{path} has unknown fields: {', '.join(unknown)}")
+    depth = _finite_float(raw.get("depth_cents", 30.0), f"{path}.depth_cents")
+    rate = _finite_float(raw.get("rate_hz", 5.0), f"{path}.rate_hz")
+    position = _finite_float(raw.get("position", 0.5), f"{path}.position")
+    amount = _finite_float(raw.get("amount", 0.5), f"{path}.amount")
+    if not 0 <= depth <= 200 or not 0.1 <= rate <= 20:
+        raise ValueError(f"{path} has invalid pitch gesture depth or rate")
+    if not 0 <= position <= 1 or not 0 <= amount <= 1:
+        raise ValueError(f"{path} position and amount must be normalized")
+    return PerformanceGesture(str(kind), depth, rate, position, amount)
+
+
+def _finite_float(value: object, path: str) -> float:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        raise ValueError(f"{path} must be numeric")
+    result = float(value)
+    if not math.isfinite(result):
+        raise ValueError(f"{path} must be finite")
+    return result
 
 
 def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
@@ -290,6 +408,25 @@ def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
             keyswitch=name,
             velocity=velocity,
             duration=duration,
+        )
+
+    if kind == "performance":
+        _reject_control_fields(data, {"at", "type", "parameter", "value"})
+        parameter = data.get("parameter")
+        if not isinstance(parameter, str) or not parameter.strip():
+            raise ValueError("performance parameter must be a non-empty string")
+        raw_value = data.get("value")
+        if isinstance(raw_value, bool) or not isinstance(raw_value, (int, float)):
+            raise ValueError("performance value must be numeric")
+        value = float(raw_value)
+        if not 0.0 <= value <= 1.0:
+            raise ValueError("performance value must be normalized between 0 and 1")
+        return ControlEvent(
+            measure,
+            beat,
+            kind,
+            performance_parameter=parameter.strip(),
+            performance_value=value,
         )
 
     raise ValueError(f"unsupported control type: {kind!r}")

@@ -3,7 +3,7 @@
 ## First use
 
 1. Run `ledgerline doctor --json`.
-2. If audio is unavailable, run `ledgerline setup plan --packs starter,core --json`.
+2. If the signed Starter assets are needed, run `ledgerline setup plan --packs starter --json`.
 3. Show the user the exact download size, licenses, destinations, and system changes.
 4. Do not download or install anything until the user explicitly approves that plan.
 5. After setup, run `ledgerline doctor --json` again and require the smoke render to pass.
@@ -32,6 +32,9 @@ the installed instrument coverage before choosing the ensemble. Never invent an 
 5. Render stems and the preview mix with a strict instrument policy.
 6. Measure clipping and loudness; do not convert those measurements into an aesthetic score.
 7. Change one musical or mix decision at a time and record why in `NOTES.md`.
+8. Before consequential revision, run `snapshot`; use `apply-edits --output` for scoped changes.
+9. Run `compare` at matched loudness and record listening conclusions in `review.yaml`.
+10. Run `lock` and `bundle` for reproducible, license-aware delivery.
 
 ## Multiple staves
 
@@ -92,3 +95,7 @@ standard pedal directions and retains CC/keyswitch data as hidden LedgerLine dir
 Objective tools cannot decide whether a melody is memorable, harmony is moving, or a groove feels
 good. Ask the user to listen at least after the first 8-bar sketch, the structural draft, the first
 mix, and before final delivery.
+
+Use `render.yaml` when a piece mixes SoundFont, SFZ, external VST3/CLAP-host, or frozen nodes. Bind
+each part exactly once and author latency, tail, state, and resource ceilings. Never substitute a
+renderer or preset after a node fails; preserve the quarantine report and ask for direction.

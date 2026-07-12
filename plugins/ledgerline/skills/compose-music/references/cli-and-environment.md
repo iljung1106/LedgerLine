@@ -1,36 +1,54 @@
 # CLI and environment
 
-Invoke all commands through `<plugin-root>/scripts/ledgerline.ps1`.
+Invoke commands through `<plugin-root>/scripts/ledgerline.ps1` and request JSON for machine reads.
 
 ```powershell
 & "<plugin-root>\scripts\ledgerline.ps1" doctor --json
 & "<plugin-root>\scripts\ledgerline.ps1" validate <project> --json
 & "<plugin-root>\scripts\ledgerline.ps1" compile <project> --json
 & "<plugin-root>\scripts\ledgerline.ps1" inspect <project> --json
-& "<plugin-root>\scripts\ledgerline.ps1" render <project> --fluidsynth <exe> --soundfont <sf3> --json
+& "<plugin-root>\scripts\ledgerline.ps1" duration <project> --tail-seconds 3 --json
+& "<plugin-root>\scripts\ledgerline.ps1" automation <project> --json
+& "<plugin-root>\scripts\ledgerline.ps1" render <project> --ffmpeg <exe> --json
 & "<plugin-root>\scripts\ledgerline.ps1" mix <project> --ffmpeg <exe> --json
 & "<plugin-root>\scripts\ledgerline.ps1" meter <wav> --ffmpeg <exe> --json
+& "<plugin-root>\scripts\ledgerline.ps1" analyze-timeline <project> --ffmpeg <exe> --json
+& "<plugin-root>\scripts\ledgerline.ps1" compare <before.wav> <after.wav> --ffmpeg <exe> --json
 ```
 
-## Runtime bootstrap
-
-`bootstrap.ps1 -Plan` is read-only. It reports the managed runtime destination, bundled wheel,
-network dependency source, and system changes. Present it and wait for explicit approval.
-`bootstrap.ps1 -Apply` creates a private venv under `%LOCALAPPDATA%\LedgerLine\runtime` and
-installs the bundled LedgerLine wheel plus its Python dependencies. It does not modify PATH or the
-registry.
-
-## Starter pack
+Workflow and asset commands:
 
 ```powershell
-& "<plugin-root>\scripts\ledgerline.ps1" setup plan --packs starter --output <plan.json> --json
-& "<plugin-root>\scripts\ledgerline.ps1" setup apply --plan <plan.json> --consent <approved-token> --json
+ledgerline samples inspect <library.sfz|exs|adv|als|nki> --json
+ledgerline samples convert <library> <output.sfz> --json
+ledgerline plugin-scan <host.exe> <instrument.vst3|clap> --format <vst3|clap> --json
+ledgerline assets <project> --json
+ledgerline snapshot <project> <name> --json
+ledgerline apply-edits <project> <plan.yaml> --output <new-project> --json
+ledgerline diff <before-project> <after-project> --json
+ledgerline review <project> --json
+ledgerline freeze <project> <part> --json
+ledgerline lock <project> --json
+ledgerline bundle <project> --output <piece.llproject> --json
 ```
 
-The plan is valid for 30 minutes and single-use. The signed catalog fixes version, URL, compressed
-size/hash, expanded limits, license, attribution, destination, and catalog key. Never apply before
-the user approves those exact values.
+If `render.yaml` is absent, `render` uses the legacy explicit FluidSynth path:
 
-FluidSynth is not in the Starter pack. Use an existing executable only through an explicit
-`--fluidsynth` path approved by the user. The same applies to unmanaged MuseScore, FFmpeg, and
-third-party SoundFonts.
+```powershell
+ledgerline render <project> --fluidsynth <exe> --soundfont <sf2-or-sf3> --ffmpeg <exe> --json
+```
+
+## Runtime and packs
+
+`bootstrap.ps1 -Plan` is read-only. After approval, `-Apply` creates a private Python 3.11 venv
+under `%LOCALAPPDATA%\LedgerLine\runtime`, installs the bundled wheel and pinned dependency ranges,
+and verifies the installed version. It never modifies PATH or the registry.
+
+```powershell
+ledgerline setup plan --packs starter --output <plan.json> --json
+ledgerline setup apply --plan <plan.json> --consent <approved-token> --json
+```
+
+The signed catalog pins URL, compressed and expanded limits, hashes, license, attribution,
+destination, and key. Plans expire and are single-use. FluidSynth, sfizz, FFmpeg, VST3/CLAP hosts,
+plugins, and commercial samples are not implied by the Starter pack; use only explicit paths.

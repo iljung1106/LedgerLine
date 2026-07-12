@@ -17,9 +17,14 @@ def render_project(
     fluidsynth: str | Path | None = None,
     soundfont: str | Path | None = None,
     sample_rate: int = 48000,
+    ffmpeg: str | Path | None = None,
     timeout: int = 180,
 ) -> dict:
     root = Path(project).resolve()
+    if (root / "render.yaml").is_file():
+        from ledgerline.render_graph import render_graph_project
+
+        return render_graph_project(root, ffmpeg=ffmpeg, timeout=timeout)
     build = root / "build"
     score_midi = build / "score.mid"
     if not score_midi.is_file():

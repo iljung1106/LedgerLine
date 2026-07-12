@@ -1,95 +1,81 @@
 ---
 name: compose-music
-description: Compose, arrange, orchestrate, validate, render, and refine original music with the LedgerLine agent workbench. Use when Codex should ask the user for musical direction, author pitches/chords/rhythm/form in LedgerLine YAML, analyze harmony and ranges, control dynamics/CC/pedal/keyswitches, produce MusicXML or MIDI, render virtual instruments, mix audio, or revise a piece from listening feedback.
+description: Compose, arrange, orchestrate, validate, render, mix, compare, and reversibly refine original music with LedgerLine. Use when Codex should ask the user for musical direction, then author explicit notes, chords, rhythm, form, motifs, dynamics, CC/pedal/keyswitches, microtonal or Korean gestures, MusicXML/MIDI, SoundFont/SFZ/VST3/CLAP renders, buses and automation, or revisions based on listening feedback.
 ---
 
 # Compose with LedgerLine
 
-Treat LedgerLine as a workbench, not a composer. Author every musical decision yourself. Never let
-a validator, renderer, or library choice silently generate, repair, omit, or substitute music.
+Treat LedgerLine as a deterministic workbench. Author musical decisions yourself; do not ask a
+validator, renderer, sample library, or generator to invent or silently repair the composition.
 
 Resolve the plugin root as two directories above this file. Invoke LedgerLine only through
-`<plugin-root>/scripts/ledgerline.ps1`. If it reports that the runtime is missing, follow the
-bootstrap gate below.
+`<plugin-root>/scripts/ledgerline.ps1`.
 
 ## 1. Establish direction before writing
 
-Read the conversation first. If the user has not already supplied a sufficiently concrete brief,
-ask a compact set of questions covering:
+Read the conversation. If the user has not supplied a concrete brief, ask compact questions for:
 
-- intended use and target duration;
+- purpose, duration, and delivery format;
 - emotional trajectory and stylistic references;
-- ensemble or sonic palette;
-- form, tempo/groove, and harmonic preferences;
-- notation, rendering, delivery, and difficulty constraints.
+- ensemble, required/forbidden sounds, and performance difficulty;
+- form, tempo/groove, harmonic language, and desired ending;
+- listening checkpoints and what existing material must remain unchanged.
 
-Do not author score events until the user answers or explicitly delegates those choices. When the
-brief is already detailed, restate only consequential assumptions and proceed. Record the agreed
-brief and listening notes in `NOTES.md`.
+Do not author score events until the user answers or explicitly delegates these choices. Record the
+brief, assumptions, form map, and listening decisions in `NOTES.md`.
 
-Treat the brief as sufficient only when purpose, approximate duration, emotional/style direction,
-ensemble, performance difficulty, and desired deliverables are either specified or explicitly
-delegated. Interpret a requested duration as a target unless the user requires frame-accurate timing.
+## 2. Gate environment and assets
 
-## 2. Gate environment changes
+Run `bootstrap.ps1 -Plan`. If setup is needed, show its destination, network sources, dependencies,
+and system changes; run `-Apply` only after explicit approval. Then run `doctor --json`.
 
-Run:
+Use unmanaged FluidSynth, sfizz, FFmpeg, MuseScore, plugins, and libraries only through explicit
+authored paths approved by the user. For signed packs, show the generated setup plan and apply only
+its unexpired single-use token. Never change PATH or the registry.
 
-```powershell
-& "<plugin-root>\scripts\bootstrap.ps1" -Plan
-```
+Before choosing sounds, inspect their presets/zones and license. Never infer an articulation,
+keyswitch, microphone position, or redistribution right from a filename.
 
-If setup is required, present its exact destination, network sources, and system changes. Run
-`-Apply` only after explicit user approval. Then run:
+## 3. Author explicit source documents
 
-```powershell
-& "<plugin-root>\scripts\ledgerline.ps1" doctor --json
-```
+Read [references/authoring-contract.md](references/authoring-contract.md) before editing YAML. Read
+[references/musical-quality.md](references/musical-quality.md) for composition/orchestration work.
+Read [references/cli-and-environment.md](references/cli-and-environment.md) for command details.
 
-Unmanaged FluidSynth, MuseScore, FFmpeg, or SoundFonts are informative only. Pass their paths
-explicitly after the user approves them. Never modify PATH, the registry, or system-wide software.
+Use only the documents needed by the project:
 
-For the signed Starter instrument pack, create a setup plan, show its bytes/license/destination,
-wait for approval, and apply that exact plan/token. Never synthesize consent or reuse a token.
+- `piece.yaml` and `parts/*.yaml`: exact score and performance data;
+- `motifs.yaml`: declarative motives whose compiled expansion remains explicit;
+- `automation.yaml`: sample-timed part, bus, master, or plugin-parameter lanes;
+- `render.yaml`: one fail-closed render node per part;
+- `mix.yaml`: track/bus routing, inserts, sends, and master targets;
+- `assets.yaml`: source, license, hashes, and conversion lineage;
+- `review.yaml`: measure-anchored listening notes;
+- `NOTES.md`: user intent and decisions.
 
-## 3. Author the piece
+Keep generated MusicXML, MIDI, audio, manifests, and reports under `build/`. Do not hand-edit them as
+source.
 
-Read [references/authoring-contract.md](references/authoring-contract.md) before creating or changing
-project YAML. Read [references/musical-quality.md](references/musical-quality.md) when composing,
-arranging, or critiquing. Read [references/cli-and-environment.md](references/cli-and-environment.md)
-when setup, rendering, or command details are needed.
+## 4. Work in reversible audible checkpoints
 
-Create or edit only authored files:
+1. Author a short representative section; validate and compile it.
+2. Inspect harmony, density, register, range, instrument coverage, and predicted duration.
+3. Render exact selected instruments; mix stems through authored buses and automation.
+4. Meter LUFS/true peak and run time-local analysis. Treat metrics as evidence, not taste.
+5. Ask the user to listen on concrete axes: theme, pacing, harmony, color, realism, and depth.
+6. Snapshot before consequential changes. Apply requested revisions to a named part/measure scope.
+7. Render A/B versions and compare at matched loudness. Record approval or unresolved notes.
+8. Lock the environment and create a license-aware bundle for delivery.
 
-- `piece.yaml`: global meter, tempo, key, and part/profile bindings;
-- `parts/*.yaml`: exact measure-local voices, notes, rests, staves, and performance controls;
-- `mix.yaml`: explicit gain, pan, reverb, and master targets;
-- `NOTES.md`: brief, form, decisions, listening feedback, and unresolved questions.
-
-Keep all generated files under `build/`. Never hand-edit generated MusicXML, MIDI, manifests, or
-audio as if they were authored sources.
-
-## 4. Work in audible checkpoints
-
-Use this loop deliberately:
-
-1. Author a short structural draft.
-2. Validate and fix only reported contract errors.
-3. Compile and inspect harmony, density, register, ranges, and instrument coverage.
-4. Render with the exact selected instrument assets.
-5. Measure clipping/loudness without treating metrics as aesthetic quality.
-6. Ask the user to listen at meaningful checkpoints.
-7. Change traceable musical or mix decisions and record why.
-
-Always request listening feedback after the first representative section, the full structural
-draft, the first production render, and before final delivery. A successful command is not proof
-that a melody, arrangement, performance, or mix is good.
+Ask for feedback after the representative section, full structural draft, first production render,
+and before final delivery. Do not claim musical quality from command success.
 
 ## 5. Fail closed
 
-- Never silently replace an unavailable instrument, articulation, keyswitch, or sound library.
-- Never invent a keyswitch mapping; it must exist in the instrument profile.
-- Never use raw CC64; author semantic pedal events.
-- Never guess staff placement in a multi-staff part.
-- Never overwrite the user's musical material merely because an analyzer reports a warning.
-- Preserve user changes and explain any requested compromise.
+- Never substitute an unavailable instrument, preset, articulation, keyswitch, sample, or plugin.
+- Never use a semantic performance parameter absent from the selected profile.
+- Never hide lossy conversion of EXS24, Ableton, Kontakt, per-note expression, or microtonality.
+- Never guess staff placement, loop points, latency, plugin state, or redistribution permission.
+- Never overwrite the original project for scoped edits; write a new project and A/B it.
+- Quarantine failed external render nodes and preserve their request/error report.
+- Surface resource-budget, range, routing, license, and loudness failures to the user.

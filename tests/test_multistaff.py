@@ -46,8 +46,7 @@ def test_grand_staff_compiles_musicxml_and_preserves_midi_semantics(
     assert piano_xml.findtext("./measure[@number='1']/attributes/staves") == "2"
     clefs = piano_xml.findall("./measure[@number='1']/attributes/clef")
     clef_values = [
-        (item.attrib.get("number"), item.findtext("sign"), item.findtext("line"))
-        for item in clefs
+        (item.attrib.get("number"), item.findtext("sign"), item.findtext("line")) for item in clefs
     ]
     assert clef_values == [
         ("1", "G", "2"),

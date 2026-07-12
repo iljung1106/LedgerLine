@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 
 from ledgerline import __version__
+from ledgerline.automation import compile_automation, load_automation
 from ledgerline.compiler_midi import compile_midi
 from ledgerline.compiler_musicxml import compile_musicxml
 from ledgerline.project import load_piece
@@ -31,11 +32,40 @@ def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
     mix_path = piece.root / "mix.yaml"
     if mix_path.is_file():
         inputs.append(mix_path)
+    render_path = piece.root / "render.yaml"
+    if render_path.is_file():
+        inputs.append(render_path)
     outputs = [musicxml_path, midi_path, *part_paths]
+    motifs_path = piece.root / "motifs.yaml"
+    if motifs_path.is_file():
+        inputs.append(motifs_path)
+        expansion_path = build / "motif-expansion.json"
+        expansion_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "status": "ok",
+                    "placements": piece.motif_expansions,
+                },
+                ensure_ascii=False,
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        outputs.append(expansion_path)
+    automation_path = piece.root / "automation.yaml"
+    if automation_path.is_file():
+        inputs.append(automation_path)
+        compiled_automation_path = build / "automation.json"
+        compile_automation(piece, load_automation(piece.root, piece), compiled_automation_path)
+        outputs.append(compiled_automation_path)
     manifest = {
         "schema_version": "1",
         "tool": {"name": "ledgerline", "version": __version__},
         "project": str(piece.root),
+        "title": piece.title,
+        "parts": [{"id": part.id, "name": part.name} for part in piece.parts],
         "inputs": [_file_record(path, piece.root) for path in inputs],
         "profiles": [_profile_record(piece.profiles[part.profile_id]) for part in piece.parts],
         "outputs": [_file_record(path, build) for path in outputs],
@@ -78,8 +108,17 @@ def _profile_record(profile) -> dict:
             "program": profile.program,
         },
         "articulations": sorted(profile.articulations),
-        "keyswitches": {
-            name: str(pitch) for name, pitch in sorted(profile.keyswitches.items())
+        "keyswitches": {name: str(pitch) for name, pitch in sorted(profile.keyswitches.items())},
+        "performance": {
+            name: {
+                "type": binding.type,
+                "controller": binding.controller,
+                "parameter": binding.parameter,
+                "min": binding.minimum,
+                "max": binding.maximum,
+                "default": binding.default,
+            }
+            for name, binding in sorted(profile.performance.items())
         },
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

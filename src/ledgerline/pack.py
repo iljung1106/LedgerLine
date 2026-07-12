@@ -198,10 +198,15 @@ def _parse_manifest(raw: bytes) -> dict[str, Any]:
         if not isinstance(item["sha256"], str) or not HEX_SHA256_RE.fullmatch(item["sha256"]):
             raise PackError(f"invalid declared SHA-256 for {path!r}")
     for path in manifest["soundfonts"]:
-        if not isinstance(path, str) or path not in seen or Path(path).suffix.lower() not in {
-            ".sf2",
-            ".sf3",
-        }:
+        if (
+            not isinstance(path, str)
+            or path not in seen
+            or Path(path).suffix.lower()
+            not in {
+                ".sf2",
+                ".sf3",
+            }
+        ):
             raise PackError(f"invalid soundfont entrypoint: {path!r}")
     return manifest
 

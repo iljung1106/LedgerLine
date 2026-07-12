@@ -1,42 +1,43 @@
-# Development status — 2026-07-10
+# Development status — 2026-07-12
 
-## Implemented
+## Implemented in 0.3.0
 
-- New Git repository and Python 3.11 package.
-- Strict authored YAML parsing; unknown fields fail.
-- Meter, pitch, duration, range, articulation, and tie validation.
-- Deterministic MusicXML 4.0, full MIDI, and per-part MIDI compilation.
-- Profile and artifact hashes in the build manifest.
-- Chord/inversion, sounding-pitch, range, and density inspection without a quality score.
-- FluidSynth rendering after SoundFont preset-table validation.
-- Stem mix with authored gain/pan, shared reverb bus, two-pass loudness normalization, and limiter.
-- FFprobe/FFmpeg measurement for 16-bit and 24-bit WAV.
-- Fail-closed setup planning and managed/unmanaged asset distinction.
-- Explicit multi-staff parts with numbered clefs, per-event staff placement, strict validation,
-  MusicXML grand-staff output, and notation-neutral MIDI playback.
-- Anchored CC automation, validated sustain-pedal state, and profile-declared semantic keyswitches
-  with MIDI playback and lossless MusicXML annotations.
-- Reproducible MuseScore General 0.2 Starter `.llpack` with pinned source hashes and full notices.
-- Detached Ed25519 catalog signatures with a pinned public key, expiry, and downgrade checks.
-- Expiring random single-use setup plans, safe streamed ZIP extraction, versioned atomic activation,
-  receipts, quarantine, active-version pointers, and SoundFont smoke validation.
+- Shared tempo-aware tick/second/sample timeline and tail-aware duration prediction.
+- Strict sample-accurate automation lanes with five interpolation modes.
+- Unified FluidSynth, sfizz-render, external VST3/CLAP-host, and frozen-stem render graph.
+- Per-node subprocess isolation, request/quarantine records, content cache, latency/tail alignment,
+  resource budgets, and reproducible renderer/instrument/state identities.
+- Semantic attack/brightness/distance/expression-style profile bindings; unsupported controls fail.
+- Microtonal note offsets, pitch/pressure/timbre curves, and nonghyeon/chuseong/toeseong/breath/
+  pluck-position gestures in MusicXML plus MIDI 1 fallback messages.
+- Multi-level bus routing, EQ/compressor/reverb inserts, sends, smooth gain automation, two-pass LUFS
+  mastering, and true-peak verification.
+- Time-local loudness/brightness/transient/active-part analysis and loudness-matched A/B reports.
+- SFZ inheritance, zone, velocity, loop, round-robin, and missing-sample audit; conservative EXS24
+  and Ableton sample-path recovery; provenance-only Kontakt handling.
+- Declarative motif expansion with transpose, invert, retrograde, augmentation, diminution, and
+  rhythm replacement, plus explicit expansion reports.
+- UTF-8 Korean and multilingual title/part metadata across MusicXML, MIDI, and manifests.
+- Snapshots, scoped edits into a new project, project diffs, listening annotations, and frozen stems.
+- Asset hashes, source/license/conversion lineage, environment lockfiles, deterministic license-aware
+  `.llproject` bundles, signed pack setup, and a refreshed Codex plugin skill.
 
 ## Local integration evidence
 
-- FluidSynth: 2.5.6, explicitly supplied unmanaged binary.
-- SoundFont: MS Basic.sf3, 51,278,610 bytes,
-  SHA-256 `5ea2375e8bd7d8e71def1036978c1621e85b66934169b6a2744b27b9b3c2d99c`.
-- MuseScore discovered: 4.7.4.
-- FFmpeg discovered: 7.0.2.
-- Rendered preview, piano stem, and cello stem at 48 kHz.
-- Final example mix: target -16 LUFS; measured -16.11 LUFS and -4.35 dBTP.
+- 63 Python tests passing on Windows with Ruff clean.
+- FluidSynth 2.5.6 rendered MuseScore General 0.2 preview plus piano/cello stems at 48 kHz.
+- FFmpeg 7.0.2 executed the format-2 track/bus graph with EQ, compression, reverb, two smooth gain
+  lanes, and mastering.
+- Production example result: 16.065667 seconds, 24-bit/48 kHz stereo, -16.14 LUFS and -1.60 dBTP.
+- Timeline analysis found the authored/reverb tail from 14.0 to 16.065667 seconds; A/B comparison
+  produced window-level level, centroid, correlation, and difference metrics.
 
-## Not implemented yet
+## Explicit limitations
 
-- Publishing the Starter `.llpack` as an HTTPS release asset; the development catalog uses `dist/`.
-- Signed downloadable Core `.llpack` artifacts.
-- Tuplets, lyrics, and MusicXML escape hatch.
-- Engraved-page, piano-roll, waveform, and spectrogram images.
-- Detailed voice-leading diagnostics and transposing-instrument fixtures.
-- Native SFZ renderer and Extended pack.
-- Codex plugin/MCP wrapper.
+- LedgerLine defines an external VST3/CLAP host protocol but does not bundle a native plugin host,
+  third-party SDK, commercial instrument, or plugin license.
+- MIDI 1 fallback expression is channel-wide. Overlapping independently expressive notes require a
+  capable external host or future MIDI 2/MPE backend to remain truly per-note.
+- EXS24 and Ableton conversion preserves recoverable sample paths and simple zones; vendor-specific
+  modulation must be verified in the source application. Kontakt containers are not decrypted.
+- Objective reports identify measurable changes and risks; they do not decide whether music is good.

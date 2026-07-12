@@ -212,7 +212,7 @@ def _load_strict_json(raw: bytes, label: str) -> Any:
         return json.loads(
             text,
             object_pairs_hook=lambda pairs: _pairs_without_duplicates(pairs, label),
-            parse_constant=lambda value: (_raise_json_constant(value, label)),
+            parse_constant=lambda value: _raise_json_constant(value, label),
         )
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise CatalogError(f"invalid {label} JSON: {exc}") from exc

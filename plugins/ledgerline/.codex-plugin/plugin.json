@@ -1,7 +1,7 @@
 {
   "name": "ledgerline",
-  "version": "0.2.0",
-  "description": "Agent-native composition with explicit MusicXML/MIDI authorship, orchestration, performance control, rendering, and review.",
+  "version": "0.3.0+codex.20260712143825",
+  "description": "Agent-native composition, expressive notation, multi-engine virtual instruments, production mixing, analysis, and reversible review.",
   "author": {
     "name": "iljung1106",
     "email": "iljung1106@users.noreply.github.com",
@@ -10,20 +10,34 @@
   "homepage": "https://github.com/iljung1106/LedgerLine",
   "repository": "https://github.com/iljung1106/LedgerLine",
   "license": "MIT",
-  "keywords": ["music", "composition", "musicxml", "midi", "orchestration", "fluidsynth"],
+  "keywords": [
+    "music",
+    "composition",
+    "musicxml",
+    "midi",
+    "orchestration",
+    "soundfont",
+    "sfz",
+    "vst3",
+    "clap"
+  ],
   "skills": "./skills/",
   "interface": {
     "displayName": "LedgerLine",
-    "shortDescription": "Compose, orchestrate, render, and review music",
-    "longDescription": "LedgerLine gives Codex a strict agent-authored score language and local tools for MusicXML, MIDI, expression controls, multi-staff notation, virtual-instrument rendering, mixing, and objective review.",
+    "shortDescription": "Compose, perform, render, mix, and revise music",
+    "longDescription": "LedgerLine gives Codex a strict authored score language, semantic instrument expression, SoundFont/SFZ/external VST3 and CLAP rendering, bus mixing, time-local analysis, licensed asset lineage, snapshots, and reviewable MusicXML/MIDI/audio outputs.",
     "developerName": "iljung1106",
     "category": "Creativity",
-    "capabilities": ["Interactive", "Write", "Local tools"],
+    "capabilities": [
+      "Interactive",
+      "Write",
+      "Local tools"
+    ],
     "websiteURL": "https://github.com/iljung1106/LedgerLine",
     "defaultPrompt": [
       "Ask me for a musical direction, then compose a playable LedgerLine piece.",
       "Orchestrate my sketch and render a reviewable audio draft.",
-      "Inspect this LedgerLine score and improve its expression without silent rewrites."
+      "A/B this render, annotate audible issues, and revise only the approved scope."
     ],
     "brandColor": "#7257D5"
   }

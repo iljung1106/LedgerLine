@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ledgerline"
-version = "0.2.0"
+version = "0.3.0"
 description = "An agent-native music authoring, inspection, and rendering workbench"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -13,6 +13,7 @@ authors = [{ name = "iljung1106" }]
 dependencies = [
   "cryptography>=45.0,<47",
   "mido>=1.3.3,<2",
+  "numpy>=2.0,<3",
   "PyYAML>=6.0.2,<7",
 ]
 
@@ -34,6 +35,9 @@ include = [
   "src/ledgerline/data/**/*.json",
   "src/ledgerline/data/**/*.sig",
 ]
+
+[tool.hatch.build.targets.wheel.force-include]
+"schemas" = "ledgerline/data/schemas"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

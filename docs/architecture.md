@@ -1,39 +1,65 @@
 # Architecture
 
-LedgerLine separates authorship from mechanics.
+LedgerLine separates human/agent authorship from deterministic mechanics.
 
 ```text
-agent-authored YAML
-  -> validate (read only)
-  -> inspect (read only)
-  -> compile (build/MusicXML + MIDI)
-  -> render (build/WAV stems)
-  -> mix (build/premaster + master)
-  -> meter (read only)
+authored score + motifs + expression
+        │
+        ├─ validate / inspect / duration
+        ▼
+shared tempo-aware timeline ──► MusicXML + MIDI + explicit motif expansion
+        │
+        ▼
+render graph: FluidSynth | sfizz | external VST3/CLAP host | frozen stem
+        │             isolated process, hash cache, latency/tail alignment
+        ▼
+WAV stems ──► track/bus graph + automation + mastering ──► mix.wav
+        │                                              │
+        ├─ time-local analysis                         ├─ LUFS / true peak
+        └─ matched-loudness A/B comparison             └─ review annotations
+
+assets/source/license/conversion ──► lockfile + manifest + .llproject bundle
 ```
 
-This diagram describes explicit commands, not an automatic pipeline. No command edits `piece.yaml`,
-`parts/*.yaml`, `mix.yaml`, or `NOTES.md`. The agent chooses when to invoke each command and makes
-every musical change itself.
+Commands never change authored music unless the user explicitly invokes `apply-edits`, which writes
+to a new directory and validates the result. `snapshot` preserves source before consequential
+work. Generated files live under `build/`.
 
-## Authored contracts
+## Time and automation
 
-- `piece.yaml`: global meter, tempo, key, part/profile bindings.
-- `parts/*.yaml`: measure-local voices, exact events, and anchored performance controls.
-- `mix.yaml`: gain, equal-power pan, shared reverb sends, and master targets.
-- `NOTES.md`: user direction, form plan, critique, and human listening decisions.
+One `Timeline` integrates every meter and tempo segment and converts measure:beat anchors to whole
+notes, 480-TPQ MIDI ticks, seconds, and integer samples. Duration prediction, automation, plugin
+requests, rendering alignment, analysis, and listening notes use this same mapping.
 
-Unknown fields fail. A missing part measure is an intentional whole-measure rest. Any present voice
-must exactly fill its measure. Absolute instrument ranges block validation; comfortable ranges are
-reported as warnings.
+Automation is authored independently of notes. Lanes are strict, unit-bearing, and support step,
+linear, smooth, exponential, and cubic Bezier interpolation. Mixer gain lanes become time-varying
+FFmpeg expressions; plugin lanes are delivered as sample positions to the external host protocol.
 
-## Trust boundary
+## Instrument capability boundary
 
-`doctor` distinguishes discovered local assets from LedgerLine-managed assets and records SHA-256.
-Unmanaged tools and SoundFonts are never automatically selected. They may be used only through
-explicit command arguments. Managed assets live below `%LOCALAPPDATA%\LedgerLine` (or the explicit
-`LEDGERLINE_HOME`) and are activated only after the pinned Ed25519 catalog, llpack manifest, and
-every payload hash have been verified.
+Profiles declare range, transposition, bank/program, articulations, keyswitches, and semantic
+performance bindings. A parameter such as `brightness` may map to CC74 for a SoundFont or to a named
+plugin parameter for a sampled instrument. Missing mappings fail rather than degrading to an
+unrelated controller.
 
-Before synthesis, the SoundFont `phdr` table is parsed and every requested bank/program is checked.
-There is no nearest-program fallback.
+SF2/SF3 preset tables and SFZ zones are inspected before use. External plugins run out of process,
+receive an immutable request, and produce hash-identified output. Failed nodes write quarantine
+reports. Resource ceilings limit duration, individual stem size, and cache size.
+
+## Mix and evidence boundary
+
+Mix format 2 routes tracks and buses as a validated acyclic graph. Ordered EQ, compressor, and
+reverb inserts plus post-fader sends compile to FFmpeg. A two-pass loudness stage verifies final
+integrated LUFS and true peak against authored tolerance.
+
+Analysis reports loudness, peaks, crest factor, spectral centroid, and active stems per time window.
+It flags evidence such as long silence or relative spikes, but it never assigns an aesthetic score
+or rewrites the source.
+
+## Reproducibility and licenses
+
+Build manifests hash authored inputs, profiles, and outputs. Render receipts additionally hash MIDI,
+renderer, instrument, state, automation, settings, and output. `ledgerline.lock.json` records the
+host environment. `assets.yaml` requires explicit source/license/redistribution metadata and a
+cycle-free conversion lineage. Bundles include permitted assets and replace restricted assets with
+source/license/hash placeholders.

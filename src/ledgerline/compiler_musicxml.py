@@ -81,9 +81,7 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                 ET.SubElement(metronome, "per-minute").text = f"{tempo.bpm:g}"
                 ET.SubElement(direction, "sound", tempo=f"{tempo.bpm:g}")
 
-            for control in [
-                item for item in part.controls if item.measure == measure_number
-            ]:
+            for control in [item for item in part.controls if item.measure == measure_number]:
                 _append_control_direction(
                     xml_measure,
                     control,
@@ -167,22 +165,28 @@ def _append_control_direction(
     direction = ET.SubElement(parent, "direction", **attributes)
     direction_type = ET.SubElement(direction, "direction-type")
     if control.kind == "pedal":
-        pedal_type = {"down": "start", "up": "stop", "change": "change"}[
-            str(control.pedal_action)
-        ]
+        pedal_type = {"down": "start", "up": "stop", "change": "change"}[str(control.pedal_action)]
         ET.SubElement(direction_type, "pedal", type=pedal_type, line="yes")
     elif control.kind == "cc":
         annotation = ET.SubElement(direction_type, "other-direction", type="ledgerline:cc")
         annotation.text = f"controller={control.controller};value={control.value}"
-    else:
+    elif control.kind == "keyswitch":
         annotation = ET.SubElement(
             direction_type,
             "other-direction",
             type="ledgerline:keyswitch",
         )
         annotation.text = (
-            f"name={control.keyswitch};velocity={control.velocity};"
-            f"duration={control.duration}"
+            f"name={control.keyswitch};velocity={control.velocity};duration={control.duration}"
+        )
+    else:
+        annotation = ET.SubElement(
+            direction_type,
+            "other-direction",
+            type="ledgerline:performance",
+        )
+        annotation.text = (
+            f"parameter={control.performance_parameter};value={control.performance_value}"
         )
     offset = (control.beat - 1) * Fraction(1, beat_type)
     ET.SubElement(direction, "offset").text = str(_ticks(offset))
@@ -222,8 +226,9 @@ def _append_event(
         else:
             pitch_node = ET.SubElement(note, "pitch")
             ET.SubElement(pitch_node, "step").text = pitch.step
-            if pitch.alter:
-                ET.SubElement(pitch_node, "alter").text = str(pitch.alter)
+            alter = pitch.alter + event.pitch_cents / 100.0
+            if alter:
+                ET.SubElement(pitch_node, "alter").text = f"{alter:g}"
             ET.SubElement(pitch_node, "octave").text = str(pitch.octave)
         ET.SubElement(note, "duration").text = str(_ticks(event.duration))
         if event.tie in {"start", "continue"}:
@@ -236,7 +241,7 @@ def _append_event(
             ET.SubElement(note, "dot")
         if staff is not None:
             ET.SubElement(note, "staff").text = str(staff)
-        if event.articulation or event.tie:
+        if event.articulation or event.tie or event.expression or event.gestures:
             notations = ET.SubElement(note, "notations")
             if event.tie in {"start", "continue"}:
                 ET.SubElement(notations, "tied", type="start")
@@ -245,3 +250,20 @@ def _append_event(
             if event.articulation:
                 articulations = ET.SubElement(notations, "articulations")
                 ET.SubElement(articulations, event.articulation)
+            for point in event.expression:
+                annotation = ET.SubElement(
+                    notations,
+                    "other-notation",
+                    type=f"ledgerline:expression:{point.parameter}",
+                )
+                annotation.text = f"at={point.position:g};value={point.value:g}"
+            for gesture in event.gestures:
+                annotation = ET.SubElement(
+                    notations,
+                    "other-notation",
+                    type=f"ledgerline:gesture:{gesture.type}",
+                )
+                annotation.text = (
+                    f"depth_cents={gesture.depth_cents:g};rate_hz={gesture.rate_hz:g};"
+                    f"position={gesture.position:g};amount={gesture.amount:g}"
+                )

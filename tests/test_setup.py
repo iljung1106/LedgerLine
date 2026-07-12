@@ -52,9 +52,7 @@ def test_catalog_tampering_is_rejected(tmp_path: Path, monkeypatch) -> None:
         load_verified_catalog(catalog, now=datetime(2026, 7, 10, tzinfo=UTC))
 
 
-def test_setup_rejects_wrong_token_expiry_and_plan_tampering(
-    tmp_path: Path, monkeypatch
-) -> None:
+def test_setup_rejects_wrong_token_expiry_and_plan_tampering(tmp_path: Path, monkeypatch) -> None:
     home = tmp_path / "home"
     monkeypatch.setenv("LEDGERLINE_HOME", str(home))
     soundfont = tmp_path / "starter.sf3"
@@ -124,9 +122,7 @@ def test_pack_hash_mismatch_is_rejected(tmp_path: Path) -> None:
     assert len(manifest_sha) == 64
 
 
-def _write_signed_catalog(
-    root: Path, llpack: Path, manifest_sha: str
-) -> tuple[Path, Path]:
+def _write_signed_catalog(root: Path, llpack: Path, manifest_sha: str) -> tuple[Path, Path]:
     private_key = Ed25519PrivateKey.generate()
     public_raw = private_key.public_key().public_bytes(
         serialization.Encoding.Raw, serialization.PublicFormat.Raw

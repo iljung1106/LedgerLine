@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/assets.schema.json",
+  "title": "LedgerLine assets",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "assets"],
+  "properties": {
+    "format": {"const": 1},
+    "assets": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "path", "source", "license", "redistributable"],
+        "properties": {
+          "id": {"type": "string", "pattern": "^[a-z][a-z0-9_.-]*$"},
+          "path": {"type": "string"},
+          "source": {"type": "string", "minLength": 1},
+          "license": {"type": "string", "minLength": 1},
+          "redistributable": {"type": "boolean"},
+          "derived_from": {"type": "array", "items": {"type": "string"}},
+          "conversion": {"type": "string"}
+        }
+      }
+    }
+  }
+}

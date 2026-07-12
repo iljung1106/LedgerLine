@@ -90,10 +90,7 @@ def test_cc_pedal_and_keyswitch_compile_to_midi_and_musicxml(example_project: Pa
         tick == 0 and msg.type == "note_on" and msg.note == 12 and msg.velocity == 72
         for tick, msg in messages
     )
-    assert any(
-        tick == 60 and msg.type == "note_off" and msg.note == 12
-        for tick, msg in messages
-    )
+    assert any(tick == 60 and msg.type == "note_off" and msg.note == 12 for tick, msg in messages)
 
     tree = ET.parse(result["musicxml"])
     assert [node.attrib["type"] for node in tree.findall(".//pedal")] == [
@@ -101,14 +98,42 @@ def test_cc_pedal_and_keyswitch_compile_to_midi_and_musicxml(example_project: Pa
         "change",
         "stop",
     ]
-    annotations = {
-        node.attrib["type"]: node.text for node in tree.findall(".//other-direction")
-    }
+    annotations = {node.attrib["type"]: node.text for node in tree.findall(".//other-direction")}
     assert annotations["ledgerline:cc"] in {
         "controller=11;value=60",
         "controller=1;value=70",
     }
     assert annotations["ledgerline:keyswitch"].startswith("name=sustain;")
+
+
+def test_semantic_performance_control_uses_profile_binding(example_project: Path) -> None:
+    _write_controls(
+        example_project,
+        [{"at": "1:1", "type": "performance", "parameter": "brightness", "value": 0.25}],
+    )
+    result = compile_project(example_project)
+    midi = mido.MidiFile(example_project / "build" / "parts" / "piano.mid")
+    messages = _absolute_messages(midi.tracks[1])
+    assert any(
+        tick == 0 and msg.type == "control_change" and msg.control == 74 and msg.value == 32
+        for tick, msg in messages
+    )
+    tree = ET.parse(result["musicxml"])
+    annotation = tree.find(".//other-direction[@type='ledgerline:performance']")
+    assert annotation is not None
+    assert annotation.text == "parameter=brightness;value=0.25"
+
+
+def test_unsupported_performance_parameter_fails_closed(example_project: Path) -> None:
+    _write_controls(
+        example_project,
+        [{"at": "1:1", "type": "performance", "parameter": "bow_pressure", "value": 0.5}],
+    )
+    with pytest.raises(ValidationError) as caught:
+        load_piece(example_project)
+    assert any(
+        item.code == "instrument.performance_unsupported" for item in caught.value.diagnostics
+    )
 
 
 @pytest.mark.parametrize(

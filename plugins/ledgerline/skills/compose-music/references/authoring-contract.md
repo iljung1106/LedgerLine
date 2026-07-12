@@ -1,92 +1,101 @@
 # Authoring contract
 
-## Project layout
+All authored YAML uses `format: 1`. Unknown fields, missing instrument capabilities, invalid
+routing, and ambiguous assets are hard errors. A present voice fills its measure exactly; an
+omitted measure is an intentional whole-measure rest.
 
-```text
-piece.yaml
-parts/<part-id>.yaml
-mix.yaml
-NOTES.md
-```
+## Score and performance
 
-All authored YAML uses `format: 1`. Unknown fields are hard errors. A present voice must fill its
-measure exactly. An omitted part measure means an intentional whole-measure rest.
-
-## Piece
+`piece.yaml` declares title, measure count, meter/tempo/key maps, and part/profile bindings.
+`parts/<id>.yaml` declares exact voices and controls.
 
 ```yaml
 format: 1
-title: Example
-measures: 8
-time:
-  - {measure: 1, beats: 4, beat_type: 4}
-tempo:
-  - {at: "1:1", bpm: 84}
-key:
-  - {measure: 1, fifths: 0, mode: major}
-parts:
-  - id: piano
-    name: Piano
-    profile: starter.acoustic-grand-piano
-    file: parts/piano.yaml
-```
-
-## Events
-
-Measures contain voices named `v1`, `v2`, and so on. Durations are whole-note fractions from
-`1/1` through `1/32`, optionally dotted once or twice.
-
-```yaml
-format: 1
-part: piano
-measures:
-  "1":
-    v1:
-      - {p: [C4, E4, G4], d: 1/2, dyn: mp, art: tenuto}
-      - {p: D5, d: 1/4, tie: start}
-      - {r: true, d: 1/4}
-```
-
-Supported dynamics are `ppp pp p mp mf f ff fff`. Supported note articulations are
-`staccato tenuto accent marcato`. Ties are `start stop continue`. `vel` may explicitly set
-1–127.
-
-## Multiple staves
-
-Declare contiguous staff numbers and clefs. Every event in a multi-staff part must name a staff.
-
-```yaml
-staves:
-  - {number: 1, name: right, clef: {sign: G, line: 2}}
-  - {number: 2, name: left, clef: {sign: F, line: 4}}
-measures:
-  "1":
-    v1:
-      - {p: [C4, E4, G4], d: 1/1, staff: 1}
-    v2:
-      - {p: C3, d: 1/1, staff: 2}
-```
-
-Staff placement affects notation, not MIDI pitch or timing. A voice may cross staves intentionally.
-
-## Performance controls
-
-Controls use measure:beat anchors on the part timeline.
-
-```yaml
+part: cello
 controls:
-  - {at: "1:1", type: cc, controller: 11, value: 64}
-  - {at: "1:1", type: pedal, action: down}
-  - {at: "1:3", type: pedal, action: change}
-  - {at: "2:1", type: keyswitch, name: legato, velocity: 64, duration: 1/32}
-  - {at: "2:4", type: pedal, action: up}
+  - {at: "1:1", type: performance, parameter: expression, value: 0.55}
+  - {at: "1:1", type: keyswitch, name: legato, velocity: 64, duration: 1/32}
+measures:
+  "1":
+    v1:
+      - p: C4
+        d: 1/2
+        dyn: mp
+        art: tenuto
+        expr:
+          pitch_cents: 12
+          curves:
+            pitch: [{at: 0, value: 0}, {at: 1, value: -35}]
+            pressure: [{at: 0, value: 0.4}, {at: 1, value: 0.75}]
+          gestures:
+            - {type: nonghyeon, depth_cents: 20, rate_hz: 5}
+      - {r: true, d: 1/2}
 ```
 
-CC0/32 belong to bank selection. Use semantic pedal instead of CC64. Keyswitch names must be
-declared by the selected instrument profile. End pedal state explicitly.
+Durations are whole-note fractions `1/1` through `1/32`, optionally dotted. Dynamics are
+`ppp pp p mp mf f ff fff`; articulations are `staccato tenuto accent marcato`; ties are
+`start stop continue`. Semantic performance controls must be declared by the profile. MIDI 1
+retains microtonal/curve data as channel pitch bend, pressure, and CC74; MusicXML retains decimal
+alterations and LedgerLine annotations. Do not overlap incompatible channel-wide expression in a
+MIDI 1 render; prefer a capable external plugin host for true per-note expression.
 
-## Instrument profiles
+For multiple staves, declare contiguous numbered clefs and set `staff` on every event. CC0/32 are
+owned by bank selection; use semantic pedal events instead of raw CC64.
 
-A custom `profiles/<profile-id>.yaml` may declare range, transposition, bank/program,
-articulations, clef, and semantic keyswitch pitches. Never describe a GM patch as if it supported
-sampled legato, round robins, or other unavailable techniques.
+## Motifs
+
+`motifs.yaml` places explicit cells into a target part/measure/voice and supports `transpose`,
+`invert`, `retrograde`, `augment`, `diminish`, and `rhythm` transformations. Compilation writes
+`build/motif-expansion.json`; review this explicit expansion rather than treating a motif name as
+musical output.
+
+## Render graph
+
+`render.yaml` binds every part exactly once to `fluidsynth`, `sfizz`, `plugin`, or `frozen`.
+
+```yaml
+format: 1
+sample_rate: 48000
+block_size: 512
+tail_seconds: 3
+resources: {max_render_seconds: 900, max_stem_mb: 1024, max_cache_mb: 4096}
+nodes:
+  - id: cello-sfz
+    part: cello
+    engine: sfizz
+    executable: C:/tools/sfizz-render.exe
+    instrument: assets/cello/cello.sfz
+  - id: piano-clap
+    part: piano
+    engine: plugin
+    plugin_format: clap
+    executable: C:/tools/ledgerline-plugin-host.exe
+    instrument: C:/plugins/Piano.clap
+    state: states/piano.state
+    latency_samples: 256
+    tail_seconds: 4
+```
+
+Plugin hosts receive `--ledgerline-request <json>` with plugin/state/MIDI/output, offline process
+settings, and sample-positioned parameter automation. Each node runs in a separate process, is
+hash-cached, latency/tail aligned, and quarantined on failure. LedgerLine provides the protocol, not
+a bundled third-party plugin SDK or instrument license.
+
+## Automation and mix
+
+`automation.yaml` lanes target `parts.<id>.*`, `buses.<id>.*`, `master.*`, or
+`parts.<id>.plugin.<parameter>`. Points use measure:beat anchors and `step`, `linear`, `smooth`,
+`exponential`, or `bezier` interpolation.
+
+`mix.yaml` format 2 supports tracks and buses with `gain_db`, equal-power `pan`, `output`, `sends`,
+and ordered `eq`, `compressor`, or `reverb` inserts. The master adds inserts, target LUFS, true-peak
+ceiling, loudness range, and tolerance. Format 1 remains readable for older projects.
+
+## Assets and review
+
+Every `assets.yaml` entry must explicitly state source, license, redistribution permission, path,
+and optional conversion parents. `bundle` includes redistributable assets and replaces restricted
+ones with source/license/hash placeholders.
+
+Use `review.yaml` for part-aware measure ranges, categories, severity, status, and human listening
+notes. `review` resolves them through the same tempo map to exact seconds and samples.

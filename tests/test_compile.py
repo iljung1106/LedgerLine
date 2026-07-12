@@ -21,7 +21,8 @@ def test_compile_writes_musicxml_midi_and_manifest(example_project: Path) -> Non
     assert len(parsed.tracks) == 3
     data = json.loads(manifest.read_text(encoding="utf-8"))
     assert data["tool"]["name"] == "ledgerline"
-    assert len(data["outputs"]) == 4
+    assert len(data["outputs"]) >= 4
+    assert any(item["path"] == "automation.json" for item in data["outputs"])
 
 
 def test_compile_is_deterministic(example_project: Path) -> None:
@@ -31,6 +32,27 @@ def test_compile_is_deterministic(example_project: Path) -> None:
     second = compile_project(example_project)
     assert Path(second["midi"]).read_bytes() == midi_bytes
     assert Path(second["musicxml"]).read_text(encoding="utf-8") == xml_text
+
+
+def test_unicode_titles_and_part_names_are_preserved(example_project: Path) -> None:
+    piece_path = example_project / "piece.yaml"
+    piece = yaml.safe_load(piece_path.read_text(encoding="utf-8"))
+    piece["title"] = "〈파라다이스〉—夜"
+    piece["parts"][0]["name"] = "피아노"
+    piece_path.write_text(
+        yaml.safe_dump(piece, sort_keys=False, allow_unicode=True), encoding="utf-8"
+    )
+
+    result = compile_project(example_project)
+
+    musicxml = Path(result["musicxml"]).read_text(encoding="utf-8")
+    assert "〈파라다이스〉—夜" in musicxml
+    assert "피아노" in musicxml
+    midi = mido.MidiFile(result["midi"], charset="utf-8")
+    assert midi.tracks[0][0].name == "〈파라다이스〉—夜"
+    assert midi.tracks[1][0].name == "피아노"
+    manifest = json.loads(Path(result["manifest"]).read_text(encoding="utf-8"))
+    assert manifest["title"] == "〈파라다이스〉—夜"
 
 
 def test_tie_is_consistent_in_musicxml_and_midi(example_project: Path) -> None:

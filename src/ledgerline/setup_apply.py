@@ -266,9 +266,7 @@ def _installer_lock(home: Path, plan_id: str):
 
 def _check_free_space(home: Path, plan: dict) -> None:
     required = (
-        int(plan["total_download_bytes"])
-        + int(plan["total_unpacked_limit"])
-        + 256 * 1024 * 1024
+        int(plan["total_download_bytes"]) + int(plan["total_unpacked_limit"]) + 256 * 1024 * 1024
     )
     free = shutil.disk_usage(home).free
     if free < required:

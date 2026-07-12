@@ -1,0 +1,32 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/edits.schema.json",
+  "title": "LedgerLine scoped edit plan",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "edits"],
+  "properties": {
+    "format": {"const": 1},
+    "edits": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["scope", "operation"],
+        "properties": {
+          "scope": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["part"],
+            "properties": {
+              "part": {"type": "string"},
+              "measure_start": {"type": "integer", "minimum": 1},
+              "measure_end": {"type": "integer", "minimum": 1}
+            }
+          },
+          "operation": {"type": "object", "required": ["type"]}
+        }
+      }
+    }
+  }
+}

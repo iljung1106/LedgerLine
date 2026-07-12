@@ -1,0 +1,17 @@
+format: 1
+lanes:
+  - id: cello-entrance
+    target: parts.cello.gain_db
+    unit: db
+    interpolation: smooth
+    points:
+      - {at: "1:1", value: -3.0}
+      - {at: "2:1", value: 0.0}
+      - {at: "4:1", value: -1.0}
+  - id: master-fade
+    target: master.gain_db
+    unit: db
+    interpolation: linear
+    points:
+      - {at: "1:1", value: 0.0}
+      - {at: "4:1", value: -1.5}
