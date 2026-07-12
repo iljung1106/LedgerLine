@@ -17,6 +17,25 @@ Invoke commands through `<plugin-root>/scripts/ledgerline.ps1` and request JSON 
 & "<plugin-root>\scripts\ledgerline.ps1" compare <before.wav> <after.wav> --ffmpeg <exe> --json
 ```
 
+Studio and delegation commands:
+
+```powershell
+& "<plugin-root>\scripts\ledgerline.ps1" studio <project> --host 127.0.0.1 --port 8765 --no-open
+& "<plugin-root>\scripts\ledgerline.ps1" studio-model <project> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate create <project> "make the ending warmer" --autonomy review --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate list <project> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate next <project> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate show <project> <id> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate propose <project> <id> <proposal.json> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate apply <project> <id> --token <approval-token> --json
+& "<plugin-root>\scripts\ledgerline.ps1" delegate reject <project> <id> --reason "needs a different direction" --json
+```
+
+`studio-model` returns JSON-only notes, parts, measures, mix, score, media, and history state for
+agents. Proposal actions are validated by the same transactional edit engine as Studio UI edits.
+For `--autonomy safe-auto`, `delegate propose` applies the proposal immediately when all actions are
+safe; otherwise it fails closed.
+
 Workflow and asset commands:
 
 ```powershell

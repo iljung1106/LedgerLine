@@ -5,9 +5,11 @@ reviewable YAML for notes, form, performance, instrument routing, automation, an
 validates those decisions, compiles MusicXML/MIDI, renders local virtual instruments, and produces
 objective reports without silently composing or repairing music.
 
-## What 0.4 provides
+## What 0.5 provides
 
 - strict meter, range, staff, tie, articulation, CC, pedal, keyswitch, and semantic capability checks;
+- LedgerLine Studio: piano roll, velocity lane, score cursor, waveform, spectrum, mixer, inspector,
+  undo/redo, and plain-language AI delegation;
 - UTF-8 MusicXML 4.0 and MIDI, per-part MIDI, microtones, expression curves, and Korean gestures;
 - declarative motif transpose/invert/retrograde/augment/diminish/rhythm expansion;
 - one timeline for measure:beat, ticks, seconds, and samples, including tempo maps and tails;
@@ -25,7 +27,8 @@ objective reports without silently composing or repairing music.
 - snapshots, scoped non-destructive edit plans, review annotations, asset lineage, lockfiles, and
   license-aware `.llproject` bundles;
 - signed `.llpack` catalogs and consent-gated setup;
-- a Codex plugin whose skill asks for musical direction before authoring.
+- a Codex plugin whose skill asks for musical direction before authoring and can process Studio
+  delegation requests.
 
 LedgerLine intentionally does not contain a baseline composer, automatic orchestrator, aesthetic
 quality score, or silent instrument fallback. The agent remains responsible for the music.
@@ -62,6 +65,25 @@ python -m venv .venv
 .\.venv\Scripts\ledgerline.exe compile examples\nocturne --json
 .\.venv\Scripts\ledgerline.exe duration examples\nocturne --tail-seconds 3 --json
 ```
+
+Open the interactive Studio workbench:
+
+```powershell
+.\.venv\Scripts\ledgerline.exe studio examples\nocturne --host 127.0.0.1 --port 8765
+```
+
+Studio delegates work through files under `.ledgerline/delegations`. A human can create the request
+in the UI, or an agent can use the same contract from CLI:
+
+```powershell
+ledgerline delegate create examples\nocturne "make measures 5-8 warmer but keep the cello line" --autonomy review --json
+ledgerline delegate next examples\nocturne --json
+ledgerline studio-model examples\nocturne --json
+ledgerline delegate propose examples\nocturne <id> proposal.json --json
+```
+
+`safe-auto` delegations apply immediately only when the proposal uses the validated safe edit set.
+Review-mode proposals wait for explicit approval in Studio.
 
 With an authored `render.yaml`, `render` dispatches every part to its exact engine. Without one,
 the legacy explicit FluidSynth route remains available:

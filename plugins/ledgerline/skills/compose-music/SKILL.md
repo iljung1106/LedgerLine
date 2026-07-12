@@ -1,6 +1,6 @@
 ---
 name: compose-music
-description: Compose, arrange, orchestrate, validate, render, mix, compare, and reversibly refine original music with LedgerLine. Use when Codex should ask the user for musical direction, then author explicit notes, chords, rhythm, form, motifs, dynamics, CC/pedal/keyswitches, microtonal or Korean gestures, MusicXML/MIDI, SoundFont/SFZ/VST3/CLAP renders, buses and automation, or revisions based on listening feedback.
+description: Compose, arrange, orchestrate, validate, render, mix, compare, run LedgerLine Studio, process AI delegation requests, and reversibly refine original music with LedgerLine. Use when Codex should ask the user for musical direction, then author explicit notes, chords, rhythm, form, motifs, dynamics, CC/pedal/keyswitches, microtonal or Korean gestures, MusicXML/MIDI, SoundFont/SFZ/VST3/CLAP renders, buses and automation, or revisions based on listening feedback.
 ---
 
 # Compose with LedgerLine
@@ -23,6 +23,11 @@ Read the conversation. If the user has not supplied a concrete brief, ask compac
 
 Do not author score events until the user answers or explicitly delegates these choices. Record the
 brief, assumptions, form map, and listening decisions in `NOTES.md`.
+
+For non-expert users, prefer plain musical choices over technical questions. Ask about mood,
+trajectory, reference feelings, length, and what should remain unchanged. Choose the orchestration,
+registers, voicings, CC lanes, articulations, mix routing, and render details yourself, then surface
+only consequential assumptions and listening checkpoints.
 
 ## 2. Gate environment and assets
 
@@ -74,7 +79,31 @@ source.
 Ask for feedback after the representative section, full structural draft, first production render,
 and before final delivery. Do not claim musical quality from command success.
 
-## 5. Fail closed
+## 5. Use Studio for inspection and delegation
+
+LedgerLine Studio is the preferred review surface when the user wants to see, hear, or delegate
+work. It exposes a shared timeline with piano roll, velocity lane, score cursor, waveform,
+spectrogram, track mixer, and note inspector.
+
+```powershell
+& "<plugin-root>\scripts\ledgerline.ps1" studio <project> --no-open
+```
+
+When a Studio delegation exists, process it as an agent work order:
+
+1. Read the next request with `delegate next <project> --json`.
+2. Inspect the project with `studio-model`, `inspect`, `duration`, and any relevant score files.
+3. If the goal lacks essential musical direction, return questions in the proposal instead of
+   guessing the musical intent.
+4. Otherwise create a proposal JSON with `summary`, optional `reasoning`, `actions`, and
+   `listening_check`.
+5. Submit it with `delegate propose <project> <id> <proposal.json> --json`.
+
+Review-mode delegations wait for the user in Studio. Safe-auto delegations apply immediately only
+when every action is in the supported safe edit set. Never download assets, substitute instruments,
+or claim aesthetic success while processing a delegation unless the user approved that scope.
+
+## 6. Fail closed
 
 - Never substitute an unavailable instrument, preset, articulation, keyswitch, sample, or plugin.
 - Never use a semantic performance parameter absent from the selected profile.

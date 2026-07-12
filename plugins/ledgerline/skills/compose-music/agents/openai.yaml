@@ -1,6 +1,6 @@
 interface:
   display_name: "Compose Music with LedgerLine"
-  short_description: "Compose, render, mix, and revise explicit music"
-  default_prompt: "Use $compose-music to establish my direction, then create and render a reviewable piece."
+  short_description: "Compose with Studio and reversible AI edits"
+  default_prompt: "Use $compose-music to open LedgerLine Studio, ask my direction, and help delegate a musical revision."
 policy:
   allow_implicit_invocation: true

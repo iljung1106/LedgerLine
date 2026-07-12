@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ledgerline"
-version = "0.4.0"
+version = "0.5.0"
 description = "An agent-native music authoring, inspection, and rendering workbench"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,10 @@ include = [
   "src/ledgerline/data/**/*.yaml",
   "src/ledgerline/data/**/*.json",
   "src/ledgerline/data/**/*.sig",
+  "src/ledgerline/data/studio/**/*",
+]
+exclude = [
+  "src/ledgerline/data/studio/**/*.map",
 ]
 
 [tool.hatch.build.targets.wheel.force-include]

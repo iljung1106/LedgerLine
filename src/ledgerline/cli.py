@@ -12,6 +12,15 @@ from ledgerline.audio_regression import check_audio_baseline, record_audio_basel
 from ledgerline.automation import compile_automation, load_automation
 from ledgerline.comparison import compare_audio
 from ledgerline.compiler import compile_project
+from ledgerline.delegation import (
+    apply_delegation,
+    create_delegation,
+    list_delegations,
+    next_delegation,
+    propose_delegation,
+    reject_delegation,
+    show_delegation,
+)
 from ledgerline.diagnostics import LedgerLineError, ValidationError
 from ledgerline.environment import doctor
 from ledgerline.expression_plan import write_expression_plan
@@ -40,6 +49,8 @@ from ledgerline.review import compile_review_annotations
 from ledgerline.sample_import import convert_sample_library, inspect_sample_library
 from ledgerline.setup_apply import apply_setup_plan
 from ledgerline.setup_plan import create_setup_plan, persist_setup_plan
+from ledgerline.studio_model import build_studio_model
+from ledgerline.studio_server import run_studio
 from ledgerline.time_analysis import analyze_project_timeline
 from ledgerline.timeline import Timeline
 from ledgerline.versions import apply_edit_plan, diff_projects, snapshot_project
@@ -325,6 +336,59 @@ def build_parser() -> argparse.ArgumentParser:
     visual_parser.add_argument("--timeout", type=int, default=180)
     visual_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    studio_parser = subparsers.add_parser(
+        "studio", help="Serve the interactive LedgerLine Studio workbench"
+    )
+    studio_parser.add_argument("project", type=Path)
+    studio_parser.add_argument("--host", default="127.0.0.1")
+    studio_parser.add_argument("--port", type=int, default=8765)
+    studio_parser.add_argument("--no-open", action="store_true")
+    studio_parser.add_argument("--ffmpeg", type=Path)
+
+    studio_model_parser = subparsers.add_parser(
+        "studio-model", help="Emit the Studio timeline, mix, score, and media model"
+    )
+    studio_model_parser.add_argument("project", type=Path)
+    studio_model_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    delegate_parser = subparsers.add_parser(
+        "delegate", help="Create and process Studio AI delegation requests"
+    )
+    delegate_sub = delegate_parser.add_subparsers(dest="delegate_command", required=True)
+    delegate_create = delegate_sub.add_parser("create")
+    delegate_create.add_argument("project", type=Path)
+    delegate_create.add_argument("goal")
+    delegate_create.add_argument("--autonomy", choices=("review", "safe-auto"), default="review")
+    delegate_create.add_argument("--context", default="")
+    delegate_create.add_argument("--constraint", action="append", default=[])
+    delegate_create.add_argument("--json", action="store_true", dest="as_json")
+    delegate_list = delegate_sub.add_parser("list")
+    delegate_list.add_argument("project", type=Path)
+    delegate_list.add_argument("--status")
+    delegate_list.add_argument("--json", action="store_true", dest="as_json")
+    delegate_next = delegate_sub.add_parser("next")
+    delegate_next.add_argument("project", type=Path)
+    delegate_next.add_argument("--json", action="store_true", dest="as_json")
+    delegate_show = delegate_sub.add_parser("show")
+    delegate_show.add_argument("project", type=Path)
+    delegate_show.add_argument("id")
+    delegate_show.add_argument("--json", action="store_true", dest="as_json")
+    delegate_propose = delegate_sub.add_parser("propose")
+    delegate_propose.add_argument("project", type=Path)
+    delegate_propose.add_argument("id")
+    delegate_propose.add_argument("proposal", type=Path)
+    delegate_propose.add_argument("--json", action="store_true", dest="as_json")
+    delegate_apply = delegate_sub.add_parser("apply")
+    delegate_apply.add_argument("project", type=Path)
+    delegate_apply.add_argument("id")
+    delegate_apply.add_argument("--token")
+    delegate_apply.add_argument("--json", action="store_true", dest="as_json")
+    delegate_reject = delegate_sub.add_parser("reject")
+    delegate_reject.add_argument("project", type=Path)
+    delegate_reject.add_argument("id")
+    delegate_reject.add_argument("--reason", default="")
+    delegate_reject.add_argument("--json", action="store_true", dest="as_json")
+
     setup_parser = subparsers.add_parser("setup", help="Consent-based environment setup")
     setup_subparsers = setup_parser.add_subparsers(dest="setup_command", required=True)
     setup_plan = setup_subparsers.add_parser(
@@ -594,6 +658,44 @@ def main(argv: list[str] | None = None) -> int:
                     timeout=args.timeout,
                 ),
                 args.as_json,
+            )
+        if args.command == "studio":
+            run_studio(
+                args.project,
+                host=args.host,
+                port=args.port,
+                open_browser=not args.no_open,
+                ffmpeg=args.ffmpeg,
+            )
+            return 0
+        if args.command == "studio-model":
+            return _emit(build_studio_model(args.project), args.as_json)
+        if args.command == "delegate":
+            if args.delegate_command == "create":
+                return _emit(
+                    create_delegation(
+                        args.project,
+                        args.goal,
+                        autonomy=args.autonomy,
+                        context=args.context,
+                        constraints=args.constraint,
+                    ),
+                    args.as_json,
+                )
+            if args.delegate_command == "list":
+                return _emit(list_delegations(args.project, status=args.status), args.as_json)
+            if args.delegate_command == "next":
+                return _emit(next_delegation(args.project), args.as_json)
+            if args.delegate_command == "show":
+                return _emit(show_delegation(args.project, args.id), args.as_json)
+            if args.delegate_command == "propose":
+                return _emit(propose_delegation(args.project, args.id, args.proposal), args.as_json)
+            if args.delegate_command == "apply":
+                return _emit(
+                    apply_delegation(args.project, args.id, token=args.token), args.as_json
+                )
+            return _emit(
+                reject_delegation(args.project, args.id, args.reason), args.as_json
             )
     except LedgerLineError as exc:
         payload = {

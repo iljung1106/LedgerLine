@@ -5,6 +5,11 @@ __pycache__/
 .ruff_cache/
 build/
 dist/
+studio-ui/node_modules/
+studio-ui/dist/
+studio-ui/*.tsbuildinfo
+studio-ui/vite.config.js
+studio-ui/vite.config.d.ts
 .cache/
 packs/private/
 packs/catalog.local.json

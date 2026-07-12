@@ -16,11 +16,16 @@ $wheel = Get-ChildItem -LiteralPath (Join-Path $pluginRoot "assets") -Filter "le
 if (-not $wheel) {
     throw "The plugin does not contain a LedgerLine wheel."
 }
+$bundledVersion = if ($wheel.Name -match '^ledgerline-(.+)-py3-none-any\.whl$') {
+    $Matches[1]
+} else {
+    throw "The LedgerLine wheel filename is not recognized."
+}
 
 if (-not $LedgerLineHome) {
     if ($env:LEDGERLINE_HOME) {
         $LedgerLineHome = $env:LEDGERLINE_HOME
-    } elseif ($env:LOCALAPPDATA) {
+} elseif ($env:LOCALAPPDATA) {
         $LedgerLineHome = Join-Path $env:LOCALAPPDATA "LedgerLine"
     } else {
         $LedgerLineHome = Join-Path $HOME ".ledgerline"
@@ -51,14 +56,14 @@ function Resolve-BasePython {
 $basePython = Resolve-BasePython
 $runtimeVersion = $null
 if (Test-Path -LiteralPath $runtimePython -PathType Leaf) {
-    $runtimeVersion = & $runtimePython -c "import ledgerline; print(ledgerline.__version__)" 2>$null
+    $runtimeVersion = & $runtimePython -c "import importlib.metadata as m; print(m.version('ledgerline'))" 2>$null
     if ($LASTEXITCODE -ne 0) {
         $runtimeVersion = $null
     }
 }
 $planStatus = if (-not (Test-Path -LiteralPath $runtimePython -PathType Leaf)) {
     "ready"
-} elseif ($runtimeVersion -eq "0.4.0") {
+} elseif ($runtimeVersion -eq $bundledVersion) {
     "already_installed"
 } else {
     "upgrade_required"
@@ -101,8 +106,8 @@ if ($LASTEXITCODE -ne 0) {
 if ($LASTEXITCODE -ne 0) {
     throw "The managed LedgerLine runtime has unsatisfied dependencies."
 }
-$installed = & $runtimePython -c "import ledgerline; print(ledgerline.__version__)"
-if ($LASTEXITCODE -ne 0 -or $installed -ne "0.4.0") {
+$installed = & $runtimePython -c "import importlib.metadata as m; print(m.version('ledgerline'))"
+if ($LASTEXITCODE -ne 0 -or $installed -ne $bundledVersion) {
     throw "LedgerLine runtime verification failed."
 }
 $env:LEDGERLINE_HOME = $LedgerLineHome

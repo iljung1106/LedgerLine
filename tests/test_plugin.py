@@ -16,7 +16,7 @@ def test_codex_plugin_manifest_and_marketplace_are_consistent() -> None:
         (ROOT / ".agents" / "plugins" / "marketplace.json").read_text(encoding="utf-8")
     )
     assert manifest["name"] == "ledgerline"
-    assert manifest["version"].split("+", 1)[0] == "0.4.0"
+    assert manifest["version"].split("+", 1)[0] == "0.5.0"
     assert manifest["skills"] == "./skills/"
     assert marketplace["name"] == "ledgerline"
     assert marketplace["plugins"] == [
@@ -47,7 +47,7 @@ def test_compose_skill_has_valid_metadata_and_no_placeholders() -> None:
 
 
 def test_plugin_bundles_verified_runtime_wheel() -> None:
-    wheel = PLUGIN / "assets" / "ledgerline-0.4.0-py3-none-any.whl"
+    wheel = PLUGIN / "assets" / "ledgerline-0.5.0-py3-none-any.whl"
     assert wheel.is_file()
     with zipfile.ZipFile(wheel) as archive:
         names = set(archive.namelist())
@@ -55,8 +55,11 @@ def test_plugin_bundles_verified_runtime_wheel() -> None:
         assert "ledgerline/data/packs/catalog.json.sig" in names
         assert "ledgerline/data/trust/catalog_keys.json" in names
         assert "ledgerline/data/schemas/render.schema.json" in names
-        metadata = archive.read("ledgerline-0.4.0.dist-info/METADATA").decode("utf-8")
+        assert "ledgerline/data/studio/index.html" in names
+        assert any(name.startswith("ledgerline/data/studio/assets/") for name in names)
+        assert not any(name.endswith(".map") for name in names)
+        metadata = archive.read("ledgerline-0.5.0.dist-info/METADATA").decode("utf-8")
         assert "ledgerline/data/reference_plugins/ledgerline-sine.clap.llplugin.json" in names
-    assert "Version: 0.4.0" in metadata
+    assert "Version: 0.5.0" in metadata
     assert "Requires-Dist: cryptography" in metadata
     assert "Requires-Dist: numpy" in metadata
