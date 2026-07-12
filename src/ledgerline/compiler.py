@@ -7,7 +7,9 @@ from pathlib import Path
 from ledgerline import __version__
 from ledgerline.automation import compile_automation, load_automation
 from ledgerline.compiler_midi import compile_midi
+from ledgerline.compiler_mpe import compile_mpe_part
 from ledgerline.compiler_musicxml import compile_musicxml
+from ledgerline.expression_plan import write_expression_plan
 from ledgerline.project import load_piece
 
 
@@ -22,10 +24,16 @@ def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
     midi_path = build / "score.mid"
     compile_musicxml(piece, musicxml_path)
     compile_midi(piece, midi_path)
+    expression_path = build / "expression-plan.json"
+    expression_plan = write_expression_plan(piece, expression_path)
     part_paths: list[Path] = []
     for part in piece.parts:
         path = parts_dir / f"{part.id}.mid"
-        compile_midi(piece, path, [part.id])
+        part_plan = expression_plan["parts"][part.id]
+        if part_plan["backend"] == "mpe":
+            compile_mpe_part(piece, part, part_plan, path)
+        else:
+            compile_midi(piece, path, [part.id])
         part_paths.append(path)
 
     inputs = [piece.root / "piece.yaml", *(part.source_path for part in piece.parts)]
@@ -35,7 +43,10 @@ def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
     render_path = piece.root / "render.yaml"
     if render_path.is_file():
         inputs.append(render_path)
-    outputs = [musicxml_path, midi_path, *part_paths]
+    performance_path = piece.root / "performance.yaml"
+    if performance_path.is_file():
+        inputs.append(performance_path)
+    outputs = [musicxml_path, midi_path, expression_path, *part_paths]
     motifs_path = piece.root / "motifs.yaml"
     if motifs_path.is_file():
         inputs.append(motifs_path)
@@ -81,6 +92,7 @@ def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
         "musicxml": str(musicxml_path),
         "midi": str(midi_path),
         "part_midis": [str(path) for path in part_paths],
+        "expression_plan": str(expression_path),
         "manifest": str(manifest_path),
     }
 

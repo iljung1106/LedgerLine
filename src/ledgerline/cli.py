@@ -8,16 +8,33 @@ from pathlib import Path
 from ledgerline.analysis import inspect_project
 from ledgerline.assets import audit_assets, bundle_project
 from ledgerline.audio import measure_audio
+from ledgerline.audio_regression import check_audio_baseline, record_audio_baseline
 from ledgerline.automation import compile_automation, load_automation
 from ledgerline.comparison import compare_audio
 from ledgerline.compiler import compile_project
 from ledgerline.diagnostics import LedgerLineError, ValidationError
 from ledgerline.environment import doctor
+from ledgerline.expression_plan import write_expression_plan
 from ledgerline.freeze import freeze_part
+from ledgerline.instrument_profile import (
+    analyze_instrument_probe,
+    approve_instrument_profile,
+    create_instrument_probe,
+    draft_instrument_profile,
+    probe_reference_instrument,
+    seal_instrument_profile,
+)
 from ledgerline.mixer import mix_project
-from ledgerline.plugin_host import scan_plugin
+from ledgerline.performance_templates import (
+    apply_performance_template,
+    list_performance_templates,
+    show_performance_template,
+)
+from ledgerline.plugin_host import scan_plugin, scan_reference_plugin
 from ledgerline.project import load_piece
+from ledgerline.project_init import initialize_project, list_project_templates
 from ledgerline.provenance import lock_project_environment
+from ledgerline.reference_host import reference_manifest
 from ledgerline.render import render_project
 from ledgerline.review import compile_review_annotations
 from ledgerline.sample_import import convert_sample_library, inspect_sample_library
@@ -26,11 +43,55 @@ from ledgerline.setup_plan import create_setup_plan, persist_setup_plan
 from ledgerline.time_analysis import analyze_project_timeline
 from ledgerline.timeline import Timeline
 from ledgerline.versions import apply_edit_plan, diff_projects, snapshot_project
+from ledgerline.visual_review import create_visual_review
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="ledgerline")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    init_parser = subparsers.add_parser("init", help="Create a strict LedgerLine project")
+    init_parser.add_argument("destination", type=Path)
+    init_parser.add_argument("--title", required=True)
+    init_parser.add_argument(
+        "--template",
+        choices=("piano-solo", "piano-cello", "string-duo", "chamber-trio"),
+        default="piano-solo",
+    )
+    init_parser.add_argument("--measures", type=int, default=16)
+    init_parser.add_argument("--beats", type=int, default=4)
+    init_parser.add_argument("--beat-type", type=int, default=4)
+    init_parser.add_argument("--bpm", type=float, default=84.0)
+    init_parser.add_argument("--fifths", type=int, default=0)
+    init_parser.add_argument("--mode", choices=("major", "minor"), default="major")
+    init_parser.add_argument("--duration-target")
+    init_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    init_templates = subparsers.add_parser("init-templates", help="List built-in project templates")
+    init_templates.add_argument("--json", action="store_true", dest="as_json")
+
+    expression_parser = subparsers.add_parser(
+        "expression-plan", help="Validate and emit per-note expression transport events"
+    )
+    expression_parser.add_argument("project", type=Path)
+    expression_parser.add_argument("--output", type=Path)
+    expression_parser.add_argument("--sample-rate", type=int, default=48_000)
+    expression_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    performance_parser = subparsers.add_parser(
+        "performance-templates", help="Inspect or apply performance backend templates"
+    )
+    performance_sub = performance_parser.add_subparsers(dest="performance_command", required=True)
+    performance_list = performance_sub.add_parser("list")
+    performance_list.add_argument("--json", action="store_true", dest="as_json")
+    performance_show = performance_sub.add_parser("show")
+    performance_show.add_argument("template")
+    performance_show.add_argument("--json", action="store_true", dest="as_json")
+    performance_apply = performance_sub.add_parser("apply")
+    performance_apply.add_argument("project", type=Path)
+    performance_apply.add_argument("part")
+    performance_apply.add_argument("template")
+    performance_apply.add_argument("--json", action="store_true", dest="as_json")
 
     doctor_parser = subparsers.add_parser("doctor", help="Inspect local music capabilities")
     doctor_parser.add_argument("--json", action="store_true", dest="as_json")
@@ -50,7 +111,9 @@ def build_parser() -> argparse.ArgumentParser:
     inspect_parser.add_argument("project", type=Path)
     inspect_parser.add_argument("--json", action="store_true", dest="as_json")
 
-    render_parser = subparsers.add_parser("render", help="Render compiled MIDI through FluidSynth")
+    render_parser = subparsers.add_parser(
+        "render", help="Render through authored nodes or an explicit FluidSynth route"
+    )
     render_parser.add_argument("project", type=Path)
     render_parser.add_argument("--fluidsynth", type=Path)
     render_parser.add_argument("--soundfont", type=Path)
@@ -187,6 +250,81 @@ def build_parser() -> argparse.ArgumentParser:
     plugin_parser.add_argument("--timeout", type=int, default=60)
     plugin_parser.add_argument("--json", action="store_true", dest="as_json")
 
+    reference_scan = subparsers.add_parser(
+        "reference-plugin-scan", help="Scan the bundled deterministic reference instrument"
+    )
+    reference_scan.add_argument("--format", choices=("vst3", "clap"), default="clap")
+    reference_scan.add_argument("--plugin", type=Path)
+    reference_scan.add_argument("--output", type=Path)
+    reference_scan.add_argument("--timeout", type=int, default=60)
+    reference_scan.add_argument("--json", action="store_true", dest="as_json")
+
+    profile_parser = subparsers.add_parser(
+        "instrument-profile", help="Draft, approve, and audio-probe instrument profiles"
+    )
+    profile_sub = profile_parser.add_subparsers(dest="profile_command", required=True)
+    profile_draft = profile_sub.add_parser("draft")
+    profile_draft.add_argument("source", type=Path)
+    profile_draft.add_argument("output", type=Path)
+    profile_draft.add_argument("--id", required=True, dest="profile_id")
+    profile_draft.add_argument("--name", required=True)
+    profile_draft.add_argument("--family", default="other")
+    profile_draft.add_argument("--json", action="store_true", dest="as_json")
+    profile_approve = profile_sub.add_parser("approve")
+    profile_approve.add_argument("draft", type=Path)
+    profile_approve.add_argument("output", type=Path)
+    profile_approve.add_argument("--token", required=True)
+    profile_approve.add_argument("--json", action="store_true", dest="as_json")
+    profile_seal = profile_sub.add_parser("seal")
+    profile_seal.add_argument("draft", type=Path)
+    profile_seal.add_argument("--json", action="store_true", dest="as_json")
+    profile_probe = profile_sub.add_parser("probe")
+    profile_probe.add_argument("plugin", type=Path)
+    profile_probe.add_argument("output", type=Path)
+    profile_probe.add_argument("--format", choices=("vst3", "clap"), default="clap")
+    profile_probe.add_argument("--low", type=int, default=24)
+    profile_probe.add_argument("--high", type=int, default=96)
+    profile_probe.add_argument("--step", type=int, default=6)
+    profile_probe.add_argument("--sample-rate", type=int, default=24_000)
+    profile_probe.add_argument("--json", action="store_true", dest="as_json")
+    profile_probe_plan = profile_sub.add_parser("probe-plan")
+    profile_probe_plan.add_argument("output", type=Path)
+    profile_probe_plan.add_argument("--low", type=int, default=24)
+    profile_probe_plan.add_argument("--high", type=int, default=96)
+    profile_probe_plan.add_argument("--step", type=int, default=6)
+    profile_probe_plan.add_argument("--sample-rate", type=int, default=48_000)
+    profile_probe_plan.add_argument("--json", action="store_true", dest="as_json")
+    profile_analyze = profile_sub.add_parser("analyze-probe")
+    profile_analyze.add_argument("audio", type=Path)
+    profile_analyze.add_argument("plan", type=Path)
+    profile_analyze.add_argument("output", type=Path)
+    profile_analyze.add_argument("--json", action="store_true", dest="as_json")
+
+    regression_parser = subparsers.add_parser(
+        "regression", help="Record or check tolerant deterministic audio golden files"
+    )
+    regression_sub = regression_parser.add_subparsers(dest="regression_command", required=True)
+    regression_record = regression_sub.add_parser("record")
+    regression_record.add_argument("audio", type=Path)
+    regression_record.add_argument("baseline", type=Path)
+    regression_record.add_argument("--exact", action="store_true")
+    regression_record.add_argument("--json", action="store_true", dest="as_json")
+    regression_check = regression_sub.add_parser("check")
+    regression_check.add_argument("audio", type=Path)
+    regression_check.add_argument("baseline", type=Path)
+    regression_check.add_argument("--exact", action="store_true")
+    regression_check.add_argument("--json", action="store_true", dest="as_json")
+
+    visual_parser = subparsers.add_parser(
+        "visual-review", help="Build a local waveform, spectrogram, score, and marker review page"
+    )
+    visual_parser.add_argument("project", type=Path)
+    visual_parser.add_argument("--audio", type=Path)
+    visual_parser.add_argument("--ffmpeg", type=Path)
+    visual_parser.add_argument("--musescore", type=Path)
+    visual_parser.add_argument("--timeout", type=int, default=180)
+    visual_parser.add_argument("--json", action="store_true", dest="as_json")
+
     setup_parser = subparsers.add_parser("setup", help="Consent-based environment setup")
     setup_subparsers = setup_parser.add_subparsers(dest="setup_command", required=True)
     setup_plan = setup_subparsers.add_parser(
@@ -209,6 +347,38 @@ def build_parser() -> argparse.ArgumentParser:
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     try:
+        if args.command == "init":
+            return _emit(
+                initialize_project(
+                    args.destination,
+                    title=args.title,
+                    template=args.template,
+                    measures=args.measures,
+                    beats=args.beats,
+                    beat_type=args.beat_type,
+                    bpm=args.bpm,
+                    fifths=args.fifths,
+                    mode=args.mode,
+                    duration_target=args.duration_target,
+                ),
+                args.as_json,
+            )
+        if args.command == "init-templates":
+            return _emit(list_project_templates(), args.as_json)
+        if args.command == "expression-plan":
+            piece = load_piece(args.project)
+            output = args.output or piece.root / "build" / "expression-plan.json"
+            return _emit(
+                write_expression_plan(piece, output, sample_rate=args.sample_rate), args.as_json
+            )
+        if args.command == "performance-templates":
+            if args.performance_command == "list":
+                return _emit(list_performance_templates(), args.as_json)
+            if args.performance_command == "show":
+                return _emit(show_performance_template(args.template), args.as_json)
+            return _emit(
+                apply_performance_template(args.project, args.part, args.template), args.as_json
+            )
         if args.command == "doctor":
             return _emit(doctor(), args.as_json)
         if args.command == "validate":
@@ -345,6 +515,82 @@ def main(argv: list[str] | None = None) -> int:
                     args.format,
                     arguments=tuple(args.host_argument),
                     output=args.output,
+                    timeout=args.timeout,
+                ),
+                args.as_json,
+            )
+        if args.command == "reference-plugin-scan":
+            return _emit(
+                scan_reference_plugin(
+                    args.plugin or reference_manifest(args.format),
+                    args.format,
+                    output=args.output,
+                    timeout=args.timeout,
+                ),
+                args.as_json,
+            )
+        if args.command == "instrument-profile":
+            if args.profile_command == "draft":
+                return _emit(
+                    draft_instrument_profile(
+                        args.source,
+                        args.output,
+                        profile_id=args.profile_id,
+                        name=args.name,
+                        family=args.family,
+                    ),
+                    args.as_json,
+                )
+            if args.profile_command == "approve":
+                return _emit(
+                    approve_instrument_profile(args.draft, args.output, token=args.token),
+                    args.as_json,
+                )
+            if args.profile_command == "seal":
+                return _emit(seal_instrument_profile(args.draft), args.as_json)
+            if args.profile_command == "probe-plan":
+                return _emit(
+                    create_instrument_probe(
+                        args.output,
+                        low=args.low,
+                        high=args.high,
+                        step=args.step,
+                        sample_rate=args.sample_rate,
+                    ),
+                    args.as_json,
+                )
+            if args.profile_command == "analyze-probe":
+                return _emit(
+                    analyze_instrument_probe(args.audio, args.plan, args.output), args.as_json
+                )
+            return _emit(
+                probe_reference_instrument(
+                    args.plugin,
+                    args.output,
+                    plugin_format=args.format,
+                    low=args.low,
+                    high=args.high,
+                    step=args.step,
+                    sample_rate=args.sample_rate,
+                ),
+                args.as_json,
+            )
+        if args.command == "regression":
+            if args.regression_command == "record":
+                return _emit(
+                    record_audio_baseline(args.audio, args.baseline, exact=args.exact),
+                    args.as_json,
+                )
+            report = check_audio_baseline(args.audio, args.baseline, exact=args.exact)
+            _emit(report, args.as_json)
+            return 0 if report["pass"] else 5
+        if args.command == "visual-review":
+            return _emit(
+                create_visual_review(
+                    args.project,
+                    audio=args.audio,
+                    ffmpeg=args.ffmpeg,
+                    musescore=args.musescore,
                     timeout=args.timeout,
                 ),
                 args.as_json,

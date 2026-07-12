@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import subprocess
+import sys
 import tempfile
 from pathlib import Path
 from typing import Any
@@ -91,6 +92,68 @@ def scan_plugin(
         output_path.write_text(
             json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+        report["report"] = str(output_path)
+    return report
+
+
+def scan_reference_plugin(
+    plugin: str | Path,
+    plugin_format: str,
+    *,
+    output: str | Path | None = None,
+    timeout: int = 60,
+) -> dict:
+    """Scan a bundled reference manifest through the same subprocess boundary."""
+    plugin_path = Path(plugin).resolve(strict=True)
+    if plugin_format not in {"vst3", "clap"}:
+        raise ValueError("plugin_format must be vst3 or clap")
+    with tempfile.TemporaryDirectory(prefix="ledgerline-reference-scan-") as temporary:
+        request_path = Path(temporary) / "request.json"
+        request_path.write_text(
+            json.dumps(
+                {
+                    "schema_version": "1",
+                    "plugin_format": plugin_format,
+                    "plugin": str(plugin_path),
+                    "offline": True,
+                },
+                indent=2,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        completed = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "ledgerline.reference_host",
+                "--ledgerline-scan-request",
+                str(request_path),
+            ],
+            check=False,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            shell=False,
+        )
+    if completed.returncode != 0:
+        raise CapabilityError(
+            "bundled reference host scan failed",
+            [Diagnostic("error", "plugin.scan_failed", str(plugin_path), completed.stderr[-3000:])],
+        )
+    normalized = _validate_scan_response(json.loads(completed.stdout))
+    report = {
+        "schema_version": "1",
+        "status": "ok",
+        "host": {"kind": "bundled-reference", "module": "ledgerline.reference_host"},
+        "plugin": _identity(plugin_path),
+        "plugin_format": plugin_format,
+        **normalized,
+    }
+    if output is not None:
+        output_path = Path(output).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
         report["report"] = str(output_path)
     return report
 

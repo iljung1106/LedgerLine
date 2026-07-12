@@ -3,20 +3,20 @@
 LedgerLine separates human/agent authorship from deterministic mechanics.
 
 ```text
-authored score + motifs + expression
+authored score + motifs + expression + performance policy
         │
         ├─ validate / inspect / duration
         ▼
-shared tempo-aware timeline ──► MusicXML + MIDI + explicit motif expansion
+shared tempo-aware timeline ──► MusicXML + MIDI/MPE + note-expression plan
         │
         ▼
-render graph: FluidSynth | sfizz | external VST3/CLAP host | frozen stem
+render graph: FluidSynth | sfizz | bundled reference | native host adapter | frozen stem
         │             isolated process, hash cache, latency/tail alignment
         ▼
 WAV stems ──► track/bus graph + automation + mastering ──► mix.wav
         │                                              │
-        ├─ time-local analysis                         ├─ LUFS / true peak
-        └─ matched-loudness A/B comparison             └─ review annotations
+        ├─ time-local / golden analysis                ├─ LUFS / true peak
+        └─ visual + matched A/B review                 └─ review annotations
 
 assets/source/license/conversion ──► lockfile + manifest + .llproject bundle
 ```
@@ -35,6 +35,11 @@ Automation is authored independently of notes. Lanes are strict, unit-bearing, a
 linear, smooth, exponential, and cubic Bezier interpolation. Mixer gain lanes become time-varying
 FFmpeg expressions; plugin lanes are delivered as sample positions to the external host protocol.
 
+`performance.yaml` chooses a transport per part. Legacy MIDI rejects independently expressive
+overlaps. MPE allocates one member channel per simultaneously active note and fails when its zone is
+exhausted. CLAP and MIDI 2.0 plans retain stable note IDs, tuning, pressure, and timbre. MIDI 2.0 is
+currently a transport-neutral event plan; a native adapter must advertise UMP support before use.
+
 ## Instrument capability boundary
 
 Profiles declare range, transposition, bank/program, articulations, keyswitches, and semantic
@@ -45,6 +50,14 @@ unrelated controller.
 SF2/SF3 preset tables and SFZ zones are inspected before use. External plugins run out of process,
 receive an immutable request, and produce hash-identified output. Failed nodes write quarantine
 reports. Resource ceilings limit duration, individual stem size, and cache size.
+
+The bundled reference host is a deterministic conformance instrument, not a compatibility claim
+for arbitrary commercial binaries. Native VST3/CLAP adapters own SDK loading, ABI/lifecycle,
+discovery, and crash isolation while keeping the LedgerLine request boundary stable.
+
+Profile discovery is two-phase: a scan or SFZ audit creates an evidence-bearing draft and ranked
+semantic candidates; only a reviewed SHA-256 token promotes the edited draft. Audio probes
+independently measure silence, audible range, and velocity response.
 
 ## Mix and evidence boundary
 

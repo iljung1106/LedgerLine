@@ -28,9 +28,13 @@
         "required": ["id", "part", "engine", "instrument"],
         "allOf": [
           {
-            "if": {"properties": {"engine": {"const": "frozen"}}},
-            "then": {"not": {"required": ["executable"]}},
+            "if": {"properties": {"engine": {"enum": ["frozen", "plugin"]}}},
+            "then": {},
             "else": {"required": ["executable"]}
+          },
+          {
+            "if": {"properties": {"engine": {"const": "plugin"}}},
+            "then": {"required": ["plugin_format"]}
           }
         ],
         "properties": {

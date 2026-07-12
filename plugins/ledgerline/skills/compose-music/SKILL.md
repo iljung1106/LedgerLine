@@ -47,6 +47,7 @@ Use only the documents needed by the project:
 - `piece.yaml` and `parts/*.yaml`: exact score and performance data;
 - `motifs.yaml`: declarative motives whose compiled expansion remains explicit;
 - `automation.yaml`: sample-timed part, bus, master, or plugin-parameter lanes;
+- `performance.yaml`: explicit legacy, MPE, CLAP-note-expression, or MIDI 2.0 policy per part;
 - `render.yaml`: one fail-closed render node per part;
 - `mix.yaml`: track/bus routing, inserts, sends, and master targets;
 - `assets.yaml`: source, license, hashes, and conversion lineage;
@@ -59,13 +60,16 @@ source.
 ## 4. Work in reversible audible checkpoints
 
 1. Author a short representative section; validate and compile it.
-2. Inspect harmony, density, register, range, instrument coverage, and predicted duration.
+2. Inspect harmony, density, register, range, instrument coverage, expression-plan conflicts, and
+   predicted duration.
 3. Render exact selected instruments; mix stems through authored buses and automation.
 4. Meter LUFS/true peak and run time-local analysis. Treat metrics as evidence, not taste.
-5. Ask the user to listen on concrete axes: theme, pacing, harmony, color, realism, and depth.
+5. Build `visual-review` and ask the user to listen on concrete axes: theme, pacing, harmony,
+   color, realism, and depth.
 6. Snapshot before consequential changes. Apply requested revisions to a named part/measure scope.
 7. Render A/B versions and compare at matched loudness. Record approval or unresolved notes.
 8. Lock the environment and create a license-aware bundle for delivery.
+9. Record an audio golden baseline only after the user approves the deterministic reference.
 
 Ask for feedback after the representative section, full structural draft, first production render,
 and before final delivery. Do not claim musical quality from command success.
@@ -75,6 +79,8 @@ and before final delivery. Do not claim musical quality from command success.
 - Never substitute an unavailable instrument, preset, articulation, keyswitch, sample, or plugin.
 - Never use a semantic performance parameter absent from the selected profile.
 - Never hide lossy conversion of EXS24, Ableton, Kontakt, per-note expression, or microtonality.
+- Never approve an inferred instrument profile without reviewing its evidence and exact token.
+- Never call the bundled reference manifest a native third-party VST3/CLAP implementation.
 - Never guess staff placement, loop points, latency, plugin state, or redistribution permission.
 - Never overwrite the original project for scoped edits; write a new project and A/B it.
 - Quarantine failed external render nodes and preserve their request/error report.

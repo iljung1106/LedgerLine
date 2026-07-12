@@ -5,6 +5,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -223,6 +224,9 @@ def render_graph_project(
                 "plugin_format": node.plugin_format,
                 "instrument": _file_identity(node.instrument),
                 "renderer": _file_identity(node.executable) if node.executable else None,
+                "host_kind": "bundled-reference"
+                if node.engine == "plugin" and node.executable is None
+                else "external",
                 "latency_samples": node.latency_samples,
                 "tail_seconds": node.tail_seconds,
                 "cache": "hit" if cached else "miss",
@@ -281,11 +285,15 @@ def _node_from_dict(root: Path, raw: Any, index: int) -> RenderNode:
     if engine not in ENGINES:
         raise ValueError(f"{path}.engine is unsupported: {engine!r}")
     executable = None
-    if engine != "frozen":
+    if engine not in {"frozen", "plugin"} or (engine == "plugin" and raw.get("executable")):
         executable = _resolve_file(root, raw.get("executable"), f"{path}.executable")
     elif raw.get("executable") is not None:
         raise ValueError(f"{path}.executable does not apply to a frozen node")
     instrument = _resolve_asset(root, raw.get("instrument"), f"{path}.instrument")
+    if engine == "plugin" and executable is None and not instrument.name.endswith(".llplugin.json"):
+        raise ValueError(
+            f"{path}.instrument must be a .llplugin.json manifest when executable is omitted"
+        )
     raw_arguments = raw.get("arguments", [])
     if not isinstance(raw_arguments, list) or not all(
         isinstance(item, str) for item in raw_arguments
@@ -340,7 +348,7 @@ def _run_node(
     if node.engine == "frozen":
         shutil.copyfile(node.instrument, output)
         return
-    if node.executable is None:
+    if node.executable is None and node.engine != "plugin":
         raise AssertionError("non-frozen render nodes require an executable")
     if node.engine == "fluidsynth":
         _check_soundfont_coverage(node.instrument, midi, node.part, graph.root)
@@ -389,9 +397,24 @@ def _run_node(
             "latency_samples": node.latency_samples,
             "tail_seconds": node.tail_seconds,
             "automation": _plugin_parameter_automation(graph, node, build),
+            "note_expression": _plugin_note_expression(node, build),
         }
         request_path.write_text(json.dumps(request, indent=2) + "\n", encoding="utf-8")
-        command = [str(node.executable), *node.arguments, "--ledgerline-request", str(request_path)]
+        if node.executable is None:
+            command = [
+                sys.executable,
+                "-m",
+                "ledgerline.reference_host",
+                "--ledgerline-request",
+                str(request_path),
+            ]
+        else:
+            command = [
+                str(node.executable),
+                *node.arguments,
+                "--ledgerline-request",
+                str(request_path),
+            ]
     completed = subprocess.run(
         command,
         check=False,
@@ -507,6 +530,9 @@ def _node_cache_key(node: RenderNode, midi: Path, graph: RenderGraph, automation
         "renderer": _hash_asset(node.executable) if node.executable else None,
         "state": _hash_asset(node.state) if node.state else None,
         "automation": _hash_file(automation) if automation.is_file() else None,
+        "note_expression": _hash_file(graph.root / "build" / "expression-plan.json")
+        if (graph.root / "build" / "expression-plan.json").is_file()
+        else None,
         "sample_rate": graph.sample_rate,
         "block_size": graph.block_size,
         "latency_samples": node.latency_samples,
@@ -663,3 +689,14 @@ def _plugin_parameter_automation(
                         }
                     )
     return sorted(events, key=lambda item: (item["sample"], item["parameter"]))
+
+
+def _plugin_note_expression(node: RenderNode, build: Path) -> list[dict[str, Any]]:
+    path = build / "expression-plan.json"
+    if not path.is_file():
+        return []
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    part = raw.get("parts", {}).get(node.part, {})
+    if part.get("backend") not in {"clap-note-expression", "midi2", "mpe"}:
+        return []
+    return list(part.get("notes", []))

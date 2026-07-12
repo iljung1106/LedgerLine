@@ -1,7 +1,7 @@
 {
   "name": "ledgerline",
-  "version": "0.3.0+codex.20260712143825",
-  "description": "Agent-native composition, expressive notation, multi-engine virtual instruments, production mixing, analysis, and reversible review.",
+  "version": "0.4.0+codex.20260712154840",
+  "description": "Agent-native composition with fail-closed per-note expression, instrument profiling, reference rendering, mixing, regression, and visual review.",
   "author": {
     "name": "iljung1106",
     "email": "iljung1106@users.noreply.github.com",
@@ -25,7 +25,7 @@
   "interface": {
     "displayName": "LedgerLine",
     "shortDescription": "Compose, perform, render, mix, and revise music",
-    "longDescription": "LedgerLine gives Codex a strict authored score language, semantic instrument expression, SoundFont/SFZ/external VST3 and CLAP rendering, bus mixing, time-local analysis, licensed asset lineage, snapshots, and reviewable MusicXML/MIDI/audio outputs.",
+    "longDescription": "LedgerLine gives Codex a strict authored score language, MPE and note-expression planning, semantic instrument profiles, SoundFont/SFZ/VST3/CLAP render boundaries, deterministic reference rendering, bus mixing, audio golden tests, licensed asset lineage, snapshots, and visual review outputs.",
     "developerName": "iljung1106",
     "category": "Creativity",
     "capabilities": [
@@ -36,6 +36,7 @@
     "websiteURL": "https://github.com/iljung1106/LedgerLine",
     "defaultPrompt": [
       "Ask me for a musical direction, then compose a playable LedgerLine piece.",
+      "Create a project and choose a verified performance backend for each instrument.",
       "Orchestrate my sketch and render a reviewable audio draft.",
       "A/B this render, annotate audible issues, and revise only the approved scope."
     ],

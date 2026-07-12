@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/performance.schema.json",
+  "title": "LedgerLine per-part expression transport",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["format", "parts"],
+  "properties": {
+    "format": {"const": 1},
+    "parts": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "backend": {"enum": ["legacy", "mpe", "clap-note-expression", "midi2"]},
+          "overlap": {"enum": ["error", "allow"]},
+          "pitch_bend_range": {"type": "integer", "minimum": 1, "maximum": 96}
+        }
+      }
+    }
+  }
+}

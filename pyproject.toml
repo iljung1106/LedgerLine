@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "ledgerline"
-version = "0.3.0"
+version = "0.4.0"
 description = "An agent-native music authoring, inspection, and rendering workbench"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -25,6 +25,7 @@ dev = [
 
 [project.scripts]
 ledgerline = "ledgerline.cli:main"
+ledgerline-host = "ledgerline.reference_host:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/ledgerline"]

@@ -20,7 +20,8 @@ Ask the user:
 - What should remain recognizable after revision?
 - At which checkpoints does the user want to listen?
 
-Record the answers and the intended form in `NOTES.md`. Run `ledgerline doctor --json` and inspect
+Start with `ledgerline init` when there is no project; its `NOTES.md` direction gate remains
+unresolved until these answers are recorded. Run `ledgerline doctor --json` and inspect
 the installed instrument coverage before choosing the ensemble. Never invent an installed patch.
 
 ## Authoring loop
@@ -29,12 +30,16 @@ the installed instrument coverage before choosing the ensemble. Never invent an 
 2. Author pitches and durations in `parts/*.yaml`.
 3. Run `ledgerline validate` after every small edit.
 4. Run `ledgerline compile` and inspect MusicXML or the MIDI piano roll.
-5. Render stems and the preview mix with a strict instrument policy.
-6. Measure clipping and loudness; do not convert those measurements into an aesthetic score.
-7. Change one musical or mix decision at a time and record why in `NOTES.md`.
-8. Before consequential revision, run `snapshot`; use `apply-edits --output` for scoped changes.
-9. Run `compare` at matched loudness and record listening conclusions in `review.yaml`.
-10. Run `lock` and `bundle` for reproducible, license-aware delivery.
+5. Apply a performance template and inspect `build/expression-plan.json`; do not use legacy MIDI
+   for overlapping independent expression.
+6. Render stems and the preview mix with a strict instrument policy.
+7. Measure clipping and loudness; do not convert those measurements into an aesthetic score.
+8. Generate `visual-review`; listen using score, waveform, spectrum, and authored time markers.
+9. Change one musical or mix decision at a time and record why in `NOTES.md`.
+10. Before consequential revision, run `snapshot`; use `apply-edits --output` for scoped changes.
+11. Run `compare` at matched loudness and record listening conclusions in `review.yaml`.
+12. Record/check an audio regression baseline for approved deterministic renders.
+13. Run `lock` and `bundle` for reproducible, license-aware delivery.
 
 ## Multiple staves
 
@@ -77,6 +82,15 @@ controls:
 CC0 and CC32 remain owned by the profile's bank selection. Pedal state must be consistent and end
 up. A missing keyswitch mapping is a hard error. MIDI contains the playback events; MusicXML uses
 standard pedal directions and retains CC/keyswitch data as hidden LedgerLine directions.
+
+Choose per-note transport explicitly in `performance.yaml`. MPE is the portable MIDI 1 route for
+independent pitch, pressure, and CC74; CLAP note expression retains note IDs for a capable host.
+`midi2` preserves the event plan but is not proof that the final adapter supports UMP. Legacy
+channel expression fails when expressive notes overlap.
+
+Do not promote guessed plugin mappings. Run `instrument-profile draft`, inspect every candidate,
+edit range/keyswitch/bank data, run `seal`, and pass that exact token to `approve`. Run the audio
+probe before selecting the profile for a score.
 
 ## Musical checks
 

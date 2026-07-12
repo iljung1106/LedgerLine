@@ -6,9 +6,11 @@ from pathlib import Path
 import pytest
 import yaml
 
+from ledgerline.compiler import compile_project
 from ledgerline.diagnostics import ValidationError
 from ledgerline.project import load_piece
-from ledgerline.render_graph import load_render_graph
+from ledgerline.reference_host import reference_manifest
+from ledgerline.render_graph import _run_node, load_render_graph
 
 
 def test_render_graph_binds_each_part_to_an_engine(example_project: Path) -> None:
@@ -97,3 +99,67 @@ def test_frozen_render_node_needs_no_executable(example_project: Path) -> None:
     graph = load_render_graph(example_project, load_piece(example_project))
     assert graph.nodes[0].executable is None
     assert graph.max_render_seconds == 60
+
+
+def test_bundled_reference_plugin_node_needs_no_executable_and_renders(
+    example_project: Path,
+) -> None:
+    manifest = reference_manifest().as_posix()
+    data = {
+        "format": 1,
+        "nodes": [
+            {
+                "id": "piano-reference",
+                "part": "piano",
+                "engine": "plugin",
+                "plugin_format": "clap",
+                "instrument": manifest,
+            },
+            {
+                "id": "cello-reference",
+                "part": "cello",
+                "engine": "plugin",
+                "plugin_format": "clap",
+                "instrument": manifest,
+            },
+        ],
+    }
+    (example_project / "render.yaml").write_text(
+        yaml.safe_dump(data, sort_keys=False), encoding="utf-8"
+    )
+    compile_project(example_project)
+    graph = load_render_graph(example_project, load_piece(example_project))
+    assert graph.nodes[0].executable is None
+    output = example_project / "build" / "reference-piano.wav"
+    _run_node(
+        graph.nodes[0],
+        example_project / "build" / "parts" / "piano.mid",
+        output,
+        graph,
+        example_project / "build",
+        30,
+    )
+    assert output.stat().st_size > 44
+
+
+def test_plugin_without_executable_rejects_native_binary(example_project: Path) -> None:
+    plugin = example_project / "instrument.clap"
+    plugin.write_bytes(b"not-a-reference-manifest")
+    data = {
+        "format": 1,
+        "nodes": [
+            {
+                "id": f"{part}-native",
+                "part": part,
+                "engine": "plugin",
+                "plugin_format": "clap",
+                "instrument": "instrument.clap",
+            }
+            for part in ("piano", "cello")
+        ],
+    }
+    (example_project / "render.yaml").write_text(
+        yaml.safe_dump(data, sort_keys=False), encoding="utf-8"
+    )
+    with pytest.raises(ValidationError, match="render.yaml is invalid"):
+        load_render_graph(example_project, load_piece(example_project))

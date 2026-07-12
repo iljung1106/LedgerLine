@@ -4,6 +4,7 @@ Invoke commands through `<plugin-root>/scripts/ledgerline.ps1` and request JSON 
 
 ```powershell
 & "<plugin-root>\scripts\ledgerline.ps1" doctor --json
+& "<plugin-root>\scripts\ledgerline.ps1" init <project> --title <title> --template piano-cello --json
 & "<plugin-root>\scripts\ledgerline.ps1" validate <project> --json
 & "<plugin-root>\scripts\ledgerline.ps1" compile <project> --json
 & "<plugin-root>\scripts\ledgerline.ps1" inspect <project> --json
@@ -22,6 +23,19 @@ Workflow and asset commands:
 ledgerline samples inspect <library.sfz|exs|adv|als|nki> --json
 ledgerline samples convert <library> <output.sfz> --json
 ledgerline plugin-scan <host.exe> <instrument.vst3|clap> --format <vst3|clap> --json
+ledgerline reference-plugin-scan --format clap --json
+ledgerline performance-templates list --json
+ledgerline performance-templates apply <project> <part> <template> --json
+ledgerline expression-plan <project> --json
+ledgerline instrument-profile draft <scan-or-sfz> <draft.json> --id <id> --name <name> --json
+ledgerline instrument-profile seal <draft.json> --json
+ledgerline instrument-profile approve <draft.json> <profile.yaml> --token <token> --json
+ledgerline instrument-profile probe <reference.llplugin.json> <output-dir> --json
+ledgerline instrument-profile probe-plan <output-dir> --sample-rate 48000 --json
+ledgerline instrument-profile analyze-probe <rendered.wav> <probe-plan.json> <report.json> --json
+ledgerline regression record <wav> <baseline.json> --json
+ledgerline regression check <wav> <baseline.json> --json
+ledgerline visual-review <project> --audio <wav> --ffmpeg <exe> --musescore <exe> --json
 ledgerline assets <project> --json
 ledgerline snapshot <project> <name> --json
 ledgerline apply-edits <project> <plan.yaml> --output <new-project> --json
@@ -51,4 +65,6 @@ ledgerline setup apply --plan <plan.json> --consent <approved-token> --json
 
 The signed catalog pins URL, compressed and expanded limits, hashes, license, attribution,
 destination, and key. Plans expire and are single-use. FluidSynth, sfizz, FFmpeg, VST3/CLAP hosts,
-plugins, and commercial samples are not implied by the Starter pack; use only explicit paths.
+plugins, and commercial samples are not implied by the Starter pack; use only explicit paths. The
+deterministic reference host ships in the wheel without a download, but it is a conformance sound,
+not a production orchestral library.

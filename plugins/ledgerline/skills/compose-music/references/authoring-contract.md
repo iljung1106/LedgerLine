@@ -37,7 +37,8 @@ Durations are whole-note fractions `1/1` through `1/32`, optionally dotted. Dyna
 `start stop continue`. Semantic performance controls must be declared by the profile. MIDI 1
 retains microtonal/curve data as channel pitch bend, pressure, and CC74; MusicXML retains decimal
 alterations and LedgerLine annotations. Do not overlap incompatible channel-wide expression in a
-MIDI 1 render; prefer a capable external plugin host for true per-note expression.
+MIDI 1 render. Declare `performance.yaml`: MPE produces member-channel MIDI, while CLAP/MIDI 2.0
+preserve stable note IDs in the expression plan. Legacy overlap is a hard error.
 
 For multiple staves, declare contiguous numbered clefs and set `staff` on every event. CC0/32 are
 owned by bank selection; use semantic pedal events instead of raw CC64.
@@ -77,9 +78,11 @@ nodes:
 ```
 
 Plugin hosts receive `--ledgerline-request <json>` with plugin/state/MIDI/output, offline process
-settings, and sample-positioned parameter automation. Each node runs in a separate process, is
-hash-cached, latency/tail aligned, and quarantined on failure. LedgerLine provides the protocol, not
-a bundled third-party plugin SDK or instrument license.
+settings, sample-positioned parameter automation, and note-expression events. Each node runs in a
+separate process, is hash-cached, latency/tail aligned, and quarantined on failure. LedgerLine
+includes a deterministic reference host for protocol/golden tests. It does not include a commercial
+instrument license or claim native compatibility with arbitrary binaries; those require an
+SDK-backed external adapter.
 
 ## Automation and mix
 

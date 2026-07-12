@@ -58,7 +58,7 @@ if (Test-Path -LiteralPath $runtimePython -PathType Leaf) {
 }
 $planStatus = if (-not (Test-Path -LiteralPath $runtimePython -PathType Leaf)) {
     "ready"
-} elseif ($runtimeVersion -eq "0.3.0") {
+} elseif ($runtimeVersion -eq "0.4.0") {
     "already_installed"
 } else {
     "upgrade_required"
@@ -102,7 +102,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "The managed LedgerLine runtime has unsatisfied dependencies."
 }
 $installed = & $runtimePython -c "import ledgerline; print(ledgerline.__version__)"
-if ($LASTEXITCODE -ne 0 -or $installed -ne "0.3.0") {
+if ($LASTEXITCODE -ne 0 -or $installed -ne "0.4.0") {
     throw "LedgerLine runtime verification failed."
 }
 $env:LEDGERLINE_HOME = $LedgerLineHome

@@ -1,0 +1,18 @@
+{
+  "schema_version": "1",
+  "plugin_format": "clap",
+  "engine": "ledgerline-reference-synth",
+  "name": "LedgerLine Reference Instrument",
+  "vendor": "LedgerLine",
+  "version": "1.0.0",
+  "latency_samples": 0,
+  "tail_samples": 24000,
+  "tail_seconds": 0.5,
+  "defaults": {"gain": 0.25, "brightness": 0.45, "attack": 0.012, "release": 0.18},
+  "parameters": [
+    {"id": "gain", "name": "Gain", "minimum": 0.0, "maximum": 1.0, "default": 0.25, "automatable": true},
+    {"id": "brightness", "name": "Brightness", "minimum": 0.0, "maximum": 1.0, "default": 0.45, "automatable": true},
+    {"id": "attack", "name": "Attack", "minimum": 0.001, "maximum": 2.0, "default": 0.012, "automatable": true},
+    {"id": "release", "name": "Release", "minimum": 0.005, "maximum": 5.0, "default": 0.18, "automatable": true}
+  ]
+}

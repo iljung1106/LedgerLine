@@ -27,7 +27,12 @@ def lock_project_environment(project: str | Path) -> dict:
                 {
                     "id": node.id,
                     "engine": node.engine,
-                    "executable": _identity(node.executable),
+                    "executable": _identity(node.executable) if node.executable else None,
+                    "host_kind": (
+                        "bundled-reference"
+                        if node.engine == "plugin" and node.executable is None
+                        else "external"
+                    ),
                     "instrument": _identity(node.instrument),
                     "state": _identity(node.state) if node.state else None,
                     "arguments": list(node.arguments),
