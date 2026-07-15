@@ -1,0 +1,7 @@
+format: 1
+assets:
+  - id: ledgerline-reference-clap-manifest
+    path: assets/ledgerline-sine.clap.llplugin.json
+    source: LedgerLine bundled deterministic reference instrument manifest 1.0.0
+    license: MIT
+    redistributable: true

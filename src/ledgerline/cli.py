@@ -10,15 +10,19 @@ from ledgerline.assets import audit_assets, bundle_project
 from ledgerline.audio import measure_audio
 from ledgerline.audio_regression import check_audio_baseline, record_audio_baseline
 from ledgerline.automation import compile_automation, load_automation
+from ledgerline.brief import load_brief
 from ledgerline.comparison import compare_audio
 from ledgerline.compiler import compile_project
 from ledgerline.delegation import (
+    accept_delegation,
+    answer_delegation,
     apply_delegation,
     create_delegation,
     list_delegations,
     next_delegation,
     propose_delegation,
     reject_delegation,
+    revise_delegation,
     show_delegation,
 )
 from ledgerline.diagnostics import LedgerLineError, ValidationError
@@ -40,10 +44,11 @@ from ledgerline.performance_templates import (
     show_performance_template,
 )
 from ledgerline.plugin_host import scan_plugin, scan_reference_plugin
-from ledgerline.project import load_piece
+from ledgerline.project import load_piece, prepare_ids
 from ledgerline.project_init import initialize_project, list_project_templates
 from ledgerline.provenance import lock_project_environment
 from ledgerline.reference_host import reference_manifest
+from ledgerline.refinement import build_refinement_report
 from ledgerline.render import render_project
 from ledgerline.review import compile_review_annotations
 from ledgerline.sample_import import convert_sample_library, inspect_sample_library
@@ -121,6 +126,22 @@ def build_parser() -> argparse.ArgumentParser:
     )
     inspect_parser.add_argument("project", type=Path)
     inspect_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    prepare_ids_parser = subparsers.add_parser(
+        "prepare-ids", help="Add stable IDs before structural Studio editing"
+    )
+    prepare_ids_parser.add_argument("project", type=Path)
+    prepare_ids_parser.add_argument("--dry-run", action="store_true")
+    prepare_ids_parser.add_argument("--json", action="store_true", dest="as_json")
+
+    refine_parser = subparsers.add_parser(
+        "refine", help="Inspect evidence for structured musical refinement passes"
+    )
+    refine_sub = refine_parser.add_subparsers(dest="refine_command", required=True)
+    refine_inspect = refine_sub.add_parser("inspect")
+    refine_inspect.add_argument("project", type=Path)
+    refine_inspect.add_argument("--output", type=Path)
+    refine_inspect.add_argument("--json", action="store_true", dest="as_json")
 
     render_parser = subparsers.add_parser(
         "render", help="Render through authored nodes or an explicit FluidSynth route"
@@ -343,7 +364,29 @@ def build_parser() -> argparse.ArgumentParser:
     studio_parser.add_argument("--host", default="127.0.0.1")
     studio_parser.add_argument("--port", type=int, default=8765)
     studio_parser.add_argument("--no-open", action="store_true")
-    studio_parser.add_argument("--ffmpeg", type=Path)
+    studio_parser.add_argument(
+        "--ffmpeg",
+        type=Path,
+        help="Approved explicit FFmpeg path retained for Studio audio jobs",
+    )
+    studio_parser.add_argument(
+        "--fluidsynth",
+        type=Path,
+        help="Approved explicit FluidSynth path for legacy projects",
+    )
+    studio_parser.add_argument(
+        "--soundfont",
+        type=Path,
+        help="Approved explicit SF2/SF3 path for legacy projects",
+    )
+    studio_parser.add_argument(
+        "--prepare",
+        action="store_true",
+        help=(
+            "Compile, render, and mix before serving; requires --ffmpeg and, without "
+            "render.yaml, --fluidsynth and --soundfont"
+        ),
+    )
 
     studio_model_parser = subparsers.add_parser(
         "studio-model", help="Emit the Studio timeline, mix, score, and media model"
@@ -388,6 +431,25 @@ def build_parser() -> argparse.ArgumentParser:
     delegate_reject.add_argument("id")
     delegate_reject.add_argument("--reason", default="")
     delegate_reject.add_argument("--json", action="store_true", dest="as_json")
+    delegate_answer = delegate_sub.add_parser("answer")
+    delegate_answer.add_argument("project", type=Path)
+    delegate_answer.add_argument("id")
+    delegate_answer.add_argument("answer")
+    delegate_answer.add_argument("--json", action="store_true", dest="as_json")
+    delegate_accept = delegate_sub.add_parser(
+        "accept", help="Accept current revision-bound production after listening"
+    )
+    delegate_accept.add_argument("project", type=Path)
+    delegate_accept.add_argument("id")
+    delegate_accept.add_argument("--note", default="")
+    delegate_accept.add_argument("--json", action="store_true", dest="as_json")
+    delegate_revise = delegate_sub.add_parser(
+        "revise", help="Return listening feedback for another proposal"
+    )
+    delegate_revise.add_argument("project", type=Path)
+    delegate_revise.add_argument("id")
+    delegate_revise.add_argument("feedback")
+    delegate_revise.add_argument("--json", action="store_true", dest="as_json")
 
     setup_parser = subparsers.add_parser("setup", help="Consent-based environment setup")
     setup_subparsers = setup_parser.add_subparsers(dest="setup_command", required=True)
@@ -447,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
             return _emit(doctor(), args.as_json)
         if args.command == "validate":
             piece = load_piece(args.project)
+            brief = load_brief(piece.root, piece)
             return _emit(
                 {
                     "status": "ok",
@@ -454,6 +517,7 @@ def main(argv: list[str] | None = None) -> int:
                     "title": piece.title,
                     "measures": piece.measures,
                     "parts": [part.id for part in piece.parts],
+                    "brief": "ready" if brief is not None else "absent",
                 },
                 args.as_json,
             )
@@ -461,6 +525,11 @@ def main(argv: list[str] | None = None) -> int:
             return _emit(compile_project(args.project, args.output), args.as_json)
         if args.command == "inspect":
             return _emit(inspect_project(args.project), args.as_json)
+        if args.command == "prepare-ids":
+            return _emit(prepare_ids(args.project, dry_run=args.dry_run), args.as_json)
+        if args.command == "refine":
+            output = args.output or args.project / "build" / "refinement" / "report.json"
+            return _emit(build_refinement_report(args.project, output), args.as_json)
         if args.command == "render":
             return _emit(
                 render_project(
@@ -666,6 +735,9 @@ def main(argv: list[str] | None = None) -> int:
                 port=args.port,
                 open_browser=not args.no_open,
                 ffmpeg=args.ffmpeg,
+                fluidsynth=args.fluidsynth,
+                soundfont=args.soundfont,
+                prepare=args.prepare,
             )
             return 0
         if args.command == "studio-model":
@@ -693,6 +765,18 @@ def main(argv: list[str] | None = None) -> int:
             if args.delegate_command == "apply":
                 return _emit(
                     apply_delegation(args.project, args.id, token=args.token), args.as_json
+                )
+            if args.delegate_command == "answer":
+                return _emit(
+                    answer_delegation(args.project, args.id, args.answer), args.as_json
+                )
+            if args.delegate_command == "accept":
+                return _emit(
+                    accept_delegation(args.project, args.id, args.note), args.as_json
+                )
+            if args.delegate_command == "revise":
+                return _emit(
+                    revise_delegation(args.project, args.id, args.feedback), args.as_json
                 )
             return _emit(
                 reject_delegation(args.project, args.id, args.reason), args.as_json

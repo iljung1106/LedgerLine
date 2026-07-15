@@ -4,7 +4,15 @@ import xml.etree.ElementTree as ET
 from fractions import Fraction
 from pathlib import Path
 
-from ledgerline.model import ControlEvent, Event, Piece, duration_token
+from ledgerline.model import (
+    DYNAMIC_VELOCITY,
+    ArticulationDefinition,
+    ControlEvent,
+    Event,
+    Piece,
+    TempoChange,
+    duration_token,
+)
 
 DIVISIONS = 960
 WHOLE_TICKS = DIVISIONS * 4
@@ -74,18 +82,39 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                         ET.SubElement(transpose, "chromatic").text = str(profile.transposition)
 
             for tempo in [item for item in piece.tempo_changes if item.measure == measure_number]:
-                direction = ET.SubElement(xml_measure, "direction", placement="above")
-                direction_type = ET.SubElement(direction, "direction-type")
-                metronome = ET.SubElement(direction_type, "metronome")
-                ET.SubElement(metronome, "beat-unit").text = "quarter"
-                ET.SubElement(metronome, "per-minute").text = f"{tempo.bpm:g}"
-                ET.SubElement(direction, "sound", tempo=f"{tempo.bpm:g}")
+                _append_tempo_direction(
+                    xml_measure,
+                    tempo,
+                    piece.time_at(measure_number).beat_type,
+                )
+
+            for tempo in [
+                item
+                for item in piece.tempo_changes
+                if item.ramp_end_measure == measure_number
+            ]:
+                _append_tempo_ramp_end(
+                    xml_measure,
+                    tempo,
+                    piece.time_at(measure_number).beat_type,
+                )
 
             for control in [item for item in part.controls if item.measure == measure_number]:
                 _append_control_direction(
                     xml_measure,
                     control,
                     piece.time_at(measure_number).beat_type,
+                )
+            for control in [
+                item
+                for item in part.controls
+                if item.kind == "dynamic_ramp" and item.end_measure == measure_number
+            ]:
+                _append_control_direction(
+                    xml_measure,
+                    control,
+                    piece.time_at(measure_number).beat_type,
+                    ramp_end=True,
                 )
 
             source_measure = part.measures.get(measure_number)
@@ -124,6 +153,9 @@ def compile_musicxml(piece: Piece, output: Path) -> None:
                         event,
                         voice_name[1:],
                         staff=staff_number if len(part.staves) > 1 or event.staff else None,
+                        articulation_definition=profile.articulation_definitions.get(
+                            event.articulation or ""
+                        ),
                     )
 
     ET.indent(score, space="  ")
@@ -153,18 +185,80 @@ def _append_dynamic(parent: ET.Element, dynamic: str, staff: int | None = None) 
         ET.SubElement(direction, "staff").text = str(staff)
 
 
+def _append_tempo_direction(
+    parent: ET.Element,
+    tempo: TempoChange,
+    beat_type: int,
+) -> None:
+    direction = ET.SubElement(parent, "direction", placement="above")
+    direction_type = ET.SubElement(direction, "direction-type")
+    metronome = ET.SubElement(direction_type, "metronome")
+    ET.SubElement(metronome, "beat-unit").text = "quarter"
+    ET.SubElement(metronome, "per-minute").text = f"{tempo.bpm:g}"
+    if tempo.ramp_bpm is not None:
+        words = "accelerando" if tempo.ramp_bpm > tempo.bpm else "ritardando"
+        ET.SubElement(direction_type, "words").text = words
+        metadata = ET.SubElement(
+            direction_type,
+            "other-direction",
+            type="ledgerline:tempo-ramp",
+        )
+        metadata.text = (
+            f"from={tempo.bpm:g};to={tempo.ramp_bpm:g};"
+            f"end={tempo.ramp_end_measure}:{tempo.ramp_end_beat};curve={tempo.ramp_curve}"
+        )
+    _append_offset(direction, tempo.beat, beat_type)
+    ET.SubElement(direction, "sound", tempo=f"{tempo.bpm:g}")
+
+
+def _append_tempo_ramp_end(
+    parent: ET.Element,
+    tempo: TempoChange,
+    beat_type: int,
+) -> None:
+    direction = ET.SubElement(parent, "direction", placement="above")
+    direction_type = ET.SubElement(direction, "direction-type")
+    metronome = ET.SubElement(direction_type, "metronome", parentheses="yes")
+    ET.SubElement(metronome, "beat-unit").text = "quarter"
+    ET.SubElement(metronome, "per-minute").text = f"{tempo.ramp_bpm:g}"
+    metadata = ET.SubElement(
+        direction_type,
+        "other-direction",
+        type="ledgerline:tempo-ramp-end",
+    )
+    metadata.text = f"bpm={tempo.ramp_bpm:g};curve={tempo.ramp_curve}"
+    _append_offset(direction, tempo.ramp_end_beat, beat_type)
+    ET.SubElement(direction, "sound", tempo=f"{tempo.ramp_bpm:g}")
+
+
 def _append_control_direction(
     parent: ET.Element,
     control: ControlEvent,
     beat_type: int,
+    *,
+    ramp_end: bool = False,
 ) -> None:
-    visible = control.kind == "pedal"
+    visible = control.kind in {"pedal", "dynamic_ramp"}
     attributes = {"placement": "below"}
     if not visible:
         attributes["print-object"] = "no"
     direction = ET.SubElement(parent, "direction", **attributes)
     direction_type = ET.SubElement(direction, "direction-type")
-    if control.kind == "pedal":
+    if control.kind == "dynamic_ramp":
+        dynamic = control.end_dynamic if ramp_end else control.start_dynamic
+        dynamics = ET.SubElement(direction_type, "dynamics")
+        ET.SubElement(dynamics, str(dynamic))
+        if ramp_end:
+            ET.SubElement(direction_type, "wedge", type="stop", number="1")
+        else:
+            wedge = (
+                "crescendo"
+                if DYNAMIC_VELOCITY[str(control.end_dynamic)]
+                > DYNAMIC_VELOCITY[str(control.start_dynamic)]
+                else "diminuendo"
+            )
+            ET.SubElement(direction_type, "wedge", type=wedge, number="1")
+    elif control.kind == "pedal":
         pedal_type = {"down": "start", "up": "stop", "change": "change"}[str(control.pedal_action)]
         ET.SubElement(direction_type, "pedal", type=pedal_type, line="yes")
     elif control.kind == "cc":
@@ -188,11 +282,18 @@ def _append_control_direction(
         annotation.text = (
             f"parameter={control.performance_parameter};value={control.performance_value}"
         )
-    offset = (control.beat - 1) * Fraction(1, beat_type)
-    ET.SubElement(direction, "offset").text = str(_ticks(offset))
+    anchor_beat = control.end_beat if ramp_end else control.beat
+    _append_offset(direction, anchor_beat, beat_type)
     if control.kind == "pedal":
         is_down = control.pedal_action in {"down", "change"}
         ET.SubElement(direction, "sound", **{"damper-pedal": "yes" if is_down else "no"})
+
+
+def _append_offset(direction: ET.Element, beat: Fraction | None, beat_type: int) -> None:
+    if beat is None:
+        raise ValueError("direction anchor beat is required")
+    offset = (beat - 1) * Fraction(1, beat_type)
+    ET.SubElement(direction, "offset").text = str(_ticks(offset))
 
 
 def _append_rest(
@@ -212,11 +313,19 @@ def _append_event(
     *,
     measure_rest: bool = False,
     staff: int | None = None,
+    articulation_definition: ArticulationDefinition | None = None,
 ) -> None:
-    note_type, dots = duration_token(event.duration)
+    note_type, dots = duration_token(event.notation_duration)
     pitches = event.pitches or (None,)
     for pitch_index, pitch in enumerate(pitches):
         note = ET.SubElement(parent, "note")
+        if event.grace is not None:
+            ET.SubElement(
+                note,
+                "grace",
+                slash="yes" if event.grace.kind == "acciaccatura" else "no",
+                **{"steal-time-following": f"{event.grace.steal * 100:g}"},
+            )
         if pitch_index:
             ET.SubElement(note, "chord")
         if pitch is None:
@@ -230,7 +339,8 @@ def _append_event(
             if alter:
                 ET.SubElement(pitch_node, "alter").text = f"{alter:g}"
             ET.SubElement(pitch_node, "octave").text = str(pitch.octave)
-        ET.SubElement(note, "duration").text = str(_ticks(event.duration))
+        if event.grace is None:
+            ET.SubElement(note, "duration").text = str(_ticks(event.duration))
         if event.tie in {"start", "continue"}:
             ET.SubElement(note, "tie", type="start")
         if event.tie in {"stop", "continue"}:
@@ -239,9 +349,20 @@ def _append_event(
         ET.SubElement(note, "type").text = note_type
         for _ in range(dots):
             ET.SubElement(note, "dot")
+        if event.tuplet is not None:
+            modification = ET.SubElement(note, "time-modification")
+            ET.SubElement(modification, "actual-notes").text = str(event.tuplet.actual)
+            ET.SubElement(modification, "normal-notes").text = str(event.tuplet.normal)
         if staff is not None:
             ET.SubElement(note, "staff").text = str(staff)
-        if event.articulation or event.tie or event.expression or event.gestures:
+        if (
+            event.articulation
+            or event.tie
+            or event.expression
+            or event.gestures
+            or event.tuplet
+            or event.slur
+        ):
             notations = ET.SubElement(note, "notations")
             if event.tie in {"start", "continue"}:
                 ET.SubElement(notations, "tied", type="start")
@@ -249,7 +370,20 @@ def _append_event(
                 ET.SubElement(notations, "tied", type="stop")
             if event.articulation:
                 articulations = ET.SubElement(notations, "articulations")
-                ET.SubElement(articulations, event.articulation)
+                if articulation_definition is None:
+                    raise ValueError(
+                        f"articulation lacks a profile definition: {event.articulation}"
+                    )
+                articulation = ET.SubElement(
+                    articulations,
+                    articulation_definition.musicxml,
+                )
+                if articulation_definition.musicxml == "other-articulation":
+                    articulation.text = articulation_definition.label
+            if event.tuplet and pitch_index == 0 and event.tuplet.type in {"start", "stop"}:
+                ET.SubElement(notations, "tuplet", type=event.tuplet.type, number="1")
+            if event.slur and pitch_index == 0:
+                ET.SubElement(notations, "slur", type=event.slur, number="1")
             for point in event.expression:
                 annotation = ET.SubElement(
                     notations,

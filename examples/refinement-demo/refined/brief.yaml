@@ -1,0 +1,45 @@
+format: 1
+purpose: Auditable chamber sketch for demonstrating agent-led musical refinement
+duration_seconds: 30
+trajectory:
+  - restrained question
+  - widening and unsettled middle
+  - quiet return with a complete cadence
+references: []
+required_instruments: [piano, cello]
+forbidden_sounds: [drum kit, distorted guitar]
+sections:
+  - id: seed
+    from: "1:1"
+    to: "2:end"
+    function: state the cello cell and establish D minor
+  - id: expansion
+    from: "3:1"
+    to: "6:end"
+    function: widen register and increase harmonic tension
+  - id: return
+    from: "7:1"
+    to: "8:end"
+    function: recall the contour and cadence without extending the form
+roles:
+  - {part: piano, from: "1:1", to: "8:end", role: harmonic support and pulse}
+  - {part: cello, from: "1:1", to: "2:end", role: foreground motive}
+  - {part: cello, from: "3:1", to: "8:end", role: bass foundation becoming counterline}
+protected:
+  - from: "1:1"
+    to: "2:end"
+    parts: [cello]
+    aspects: [pitch, rhythm]
+style_checks:
+  low_register_spacing: review
+  parallel_fifths: review
+  parallel_octaves: review
+invariants:
+  - Keep the piece an eight-measure acoustic piano and cello duo.
+  - Preserve the cello pitches and rhythms in measures 1-2 through refinement passes.
+  - Treat the bundled reference instrument as a technical render, not the intended timbre.
+checkpoints:
+  - structural sketch
+  - musical refinement
+  - production treatment
+  - human listening approval

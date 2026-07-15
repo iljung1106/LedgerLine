@@ -1,0 +1,26 @@
+format: 1
+annotations:
+  - id: refined-protected-cell
+    at: "1:1"
+    end: "2:4"
+    category: composition
+    severity: note
+    message: Confirm the protected cell remains recognizable over the moving piano texture.
+    parts: [cello, piano]
+    status: open
+  - id: refined-register-handoff
+    at: "3:1"
+    end: "4:4"
+    category: orchestration
+    severity: warning
+    message: Listen for masking as the cello moves from bass foundation into the middle register.
+    parts: [cello, piano]
+    status: open
+  - id: refined-crest
+    at: "5:1"
+    end: "6:4"
+    category: composition
+    severity: note
+    message: Judge whether register and motion create a convincing crest before production shaping.
+    parts: [cello, piano]
+    status: open

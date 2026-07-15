@@ -1,4 +1,4 @@
-import type { Delegation, EditCommand, StudioModel } from "./types";
+import type { Delegation, EditCommand, StudioJob, StudioModel } from "./types";
 
 let token = "";
 
@@ -8,6 +8,14 @@ export async function loadModel(): Promise<StudioModel> {
   const model = (await response.json()) as StudioModel;
   token = model.csrf_token;
   return model;
+}
+
+export async function loadStatus(): Promise<Pick<StudioModel, "build" | "jobs"> | null> {
+  const response = await fetch("/api/status", { cache: "no-store" });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error("Studio build status could not be loaded.");
+  const status = await response.json() as { build?: StudioModel["build"]; jobs?: StudioModel["jobs"] };
+  return { build: status.build, jobs: status.jobs };
 }
 
 async function post<T>(url: string, body: unknown = {}): Promise<T> {
@@ -33,6 +41,14 @@ export async function redo() {
   return post<{ model: StudioModel }>("/api/redo");
 }
 
+export async function cancelJob(id: string) {
+  return post<{ id: string; status: string }>(`/api/jobs/${id}/cancel`);
+}
+
+export async function startJob(kind: "render" | "mix" | "refine" | "build", payload: Record<string, unknown> = {}) {
+  return post<StudioJob>("/api/jobs", { kind, payload, coalesce: true });
+}
+
 export async function listDelegations(): Promise<Delegation[]> {
   const response = await fetch("/api/delegations", { cache: "no-store" });
   if (!response.ok) throw new Error("Delegations could not be loaded.");
@@ -49,4 +65,16 @@ export async function applyDelegation(task: Delegation) {
 
 export async function rejectDelegation(task: Delegation) {
   return post<Delegation>(`/api/delegations/${task.id}/reject`, { reason: "Rejected in Studio" });
+}
+
+export async function answerDelegation(task: Delegation, answer: string) {
+  return post<Delegation>(`/api/delegations/${task.id}/answer`, { answer, answers: [answer] });
+}
+
+export async function acceptDelegation(task: Delegation, note: string) {
+  return post<Delegation>(`/api/delegations/${task.id}/accept`, { note });
+}
+
+export async function reviseDelegation(task: Delegation, feedback: string) {
+  return post<Delegation>(`/api/delegations/${task.id}/revise`, { feedback });
 }

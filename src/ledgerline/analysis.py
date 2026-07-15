@@ -7,6 +7,7 @@ from pathlib import Path
 
 from ledgerline.model import Piece
 from ledgerline.project import load_piece
+from ledgerline.timeline import Timeline
 
 CHORD_TEMPLATES = {
     (0, 4, 7): "",
@@ -87,28 +88,23 @@ def inspect_project(root: str | Path) -> dict:
 
 
 def _note_spans(piece: Piece) -> list[NoteSpan]:
-    starts: dict[int, Fraction] = {}
-    cursor = Fraction(0)
-    for number in range(1, piece.measures + 1):
-        starts[number] = cursor
-        cursor += piece.time_at(number).length
+    timeline = Timeline(piece)
     spans: list[NoteSpan] = []
     for part in piece.parts:
         profile = piece.profiles[part.profile_id]
         for number, measure in part.measures.items():
             for events in measure.voices.values():
-                position = starts[number]
-                for event in events:
+                for scheduled in timeline.schedule_voice(number, events):
+                    event = scheduled.event
                     for pitch in event.pitches:
                         spans.append(
                             NoteSpan(
                                 part=part.id,
-                                start=position,
-                                end=position + event.duration,
+                                start=scheduled.start_whole,
+                                end=scheduled.start_whole + scheduled.duration,
                                 midi=pitch.midi + profile.transposition,
                             )
                         )
-                    position += event.duration
     return spans
 
 

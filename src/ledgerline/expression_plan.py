@@ -124,7 +124,6 @@ def write_expression_plan(piece: Piece, output: Path, *, sample_rate: int = 48_0
 
 def _part_notes(piece: Piece, part: Part, timeline: Timeline) -> list[dict[str, Any]]:
     profile = piece.profiles[part.profile_id]
-    starts = timeline.measure_starts
     result: list[dict[str, Any]] = []
     dynamics: dict[str, int] = {}
     active_ties: dict[tuple[str, int], dict[str, Any]] = {}
@@ -134,17 +133,20 @@ def _part_notes(piece: Piece, part: Part, timeline: Timeline) -> list[dict[str, 
         if measure is None:
             continue
         for voice, events in sorted(measure.voices.items(), key=lambda item: int(item[0][1:])):
-            cursor = starts[measure_number]
             velocity = dynamics.get(voice, DYNAMIC_VELOCITY["mf"])
-            for event_index, event in enumerate(events):
+            event_indices = {id(event): index for index, event in enumerate(events)}
+            for scheduled in timeline.schedule_voice(measure_number, events):
+                event = scheduled.event
+                event_index = event_indices[id(event)]
+                cursor = scheduled.start_whole
+                duration = scheduled.duration
                 if event.dynamic:
                     velocity = DYNAMIC_VELOCITY[event.dynamic]
                     dynamics[voice] = velocity
                 if event.is_rest:
-                    cursor += event.duration
                     continue
-                duration = event.duration
-                gate = _articulation_gate(event)
+                definition = profile.articulation_definitions.get(event.articulation or "")
+                gate = _articulation_gate(event, definition)
                 end = cursor + duration * Fraction(str(gate))
                 expression = _expand_expression(event, timeline, cursor, duration)
                 for chord_index, pitch in enumerate(event.pitches):
@@ -182,7 +184,6 @@ def _part_notes(piece: Piece, part: Part, timeline: Timeline) -> list[dict[str, 
                     )
                     if event.tie in {"start", "continue"}:
                         active_ties[tie_key] = result[-1]
-                cursor += duration
     return sorted(result, key=lambda note: (note["start_tick"], note["pitch"], note["note_id"]))
 
 

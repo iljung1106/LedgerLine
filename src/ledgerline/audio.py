@@ -3,11 +3,12 @@ from __future__ import annotations
 import json
 import math
 import re
-import subprocess
+import threading
 from pathlib import Path
 
 from ledgerline.diagnostics import CapabilityError, Diagnostic
 from ledgerline.environment import doctor
+from ledgerline.external_process import run_external
 
 LOUDNORM_JSON_RE = re.compile(r"\{\s*\"input_i\".*?\}", re.DOTALL)
 
@@ -41,6 +42,7 @@ def measure_audio(
     target_lufs: float = -14.0,
     true_peak_dbtp: float = -1.0,
     loudness_range_lu: float = 11.0,
+    cancel_event: threading.Event | None = None,
 ) -> dict:
     audio_path = Path(path).resolve()
     if not audio_path.is_file():
@@ -49,7 +51,7 @@ def measure_audio(
             [Diagnostic("error", "audio.file_missing", str(audio_path), "File does not exist.")],
         )
     ffmpeg_path = resolve_ffmpeg(ffmpeg)
-    stream = _probe_audio(audio_path, ffmpeg_path, timeout)
+    stream = _probe_audio(audio_path, ffmpeg_path, timeout, cancel_event)
     command = [
         str(ffmpeg_path),
         "-hide_banner",
@@ -62,13 +64,12 @@ def measure_audio(
         "null",
         "-",
     ]
-    completed = subprocess.run(
+    completed = run_external(
         command,
-        check=False,
-        capture_output=True,
-        text=True,
         timeout=timeout,
-        shell=False,
+        cancel_event=cancel_event,
+        encoding="utf-8",
+        errors="replace",
     )
     matches = LOUDNORM_JSON_RE.findall(completed.stderr)
     if completed.returncode != 0 or not matches:
@@ -119,7 +120,12 @@ def _float_or_none(value: object) -> float | None:
     return parsed if math.isfinite(parsed) else None
 
 
-def _probe_audio(audio_path: Path, ffmpeg_path: Path, timeout: int) -> dict:
+def _probe_audio(
+    audio_path: Path,
+    ffmpeg_path: Path,
+    timeout: int,
+    cancel_event: threading.Event | None = None,
+) -> dict:
     executable = "ffprobe.exe" if ffmpeg_path.suffix.lower() == ".exe" else "ffprobe"
     ffprobe = ffmpeg_path.with_name(executable)
     if not ffprobe.is_file():
@@ -144,13 +150,12 @@ def _probe_audio(audio_path: Path, ffmpeg_path: Path, timeout: int) -> dict:
         "json",
         str(audio_path),
     ]
-    completed = subprocess.run(
+    completed = run_external(
         command,
-        check=False,
-        capture_output=True,
-        text=True,
         timeout=timeout,
-        shell=False,
+        cancel_event=cancel_event,
+        encoding="utf-8",
+        errors="replace",
     )
     if completed.returncode != 0:
         raise CapabilityError(

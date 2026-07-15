@@ -1,7 +1,7 @@
 {
   "name": "ledgerline",
-  "version": "0.5.0+codex.20260712165456",
-  "description": "Agent-native composition with LedgerLine Studio, AI delegation, explicit score editing, rendering, mixing, and reversible review.",
+  "version": "0.6.0+codex.20260714194255",
+  "description": "Agent-native drafting, professional refinement, rendering, mixing, and editable revision-matched review in LedgerLine Studio.",
   "author": {
     "name": "iljung1106",
     "email": "iljung1106@users.noreply.github.com",
@@ -24,8 +24,8 @@
   "skills": "./skills/",
   "interface": {
     "displayName": "LedgerLine",
-    "shortDescription": "Compose with Studio, AI delegation, and review",
-    "longDescription": "LedgerLine gives Codex a strict authored score language, an interactive Studio for piano roll, score, waveform, spectrum, mixer, and inspector review, plus AI delegation requests that become validated reversible edit proposals. It supports MPE and note-expression planning, semantic instrument profiles, SoundFont/SFZ/VST3/CLAP render boundaries, deterministic reference rendering, bus mixing, audio golden tests, licensed asset lineage, snapshots, and bundles.",
+    "shortDescription": "Draft, refine, render, and edit music in Studio",
+    "longDescription": "LedgerLine gives Codex a strict authored score language, creative briefs with protected material, evidence-backed musical refinement passes, and a revision-matched Studio for piano roll, performance lanes, score, waveform, spectrogram, mixer, engine provenance, build jobs, and reversible AI proposals. It supports MPE and note-expression planning, semantic instrument profiles, SoundFont/SFZ/VST3/CLAP render boundaries, deterministic reference rendering, bus mixing, licensed asset lineage, snapshots, and bundles.",
     "developerName": "iljung1106",
     "category": "Creativity",
     "capabilities": [
@@ -35,9 +35,9 @@
     ],
     "websiteURL": "https://github.com/iljung1106/LedgerLine",
     "defaultPrompt": [
-      "Use $compose-music to open LedgerLine Studio and help me delegate a musical revision.",
-      "Ask my direction, compose a LedgerLine draft, then render and review it in Studio.",
-      "Process my Studio delegation request and return a reversible edit proposal."
+      "Use $compose-music to ask my direction, write a compact draft, refine it in named passes, and open the current render in Studio.",
+      "Use $compose-music to inspect this LedgerLine project, preserve its protected material, and propose a professional refinement.",
+      "Use $compose-music to process my Studio delegation against the current revision and return a reversible edit proposal."
     ],
     "brandColor": "#3FC1AC"
   }

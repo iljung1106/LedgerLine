@@ -1,0 +1,52 @@
+format: 1
+part: cello
+controls:
+  - {id: cello-expression-01, at: "1:1", type: performance, parameter: expression, value: 0.34}
+  - {id: cello-expression-02, at: "3:1", type: performance, parameter: expression, value: 0.48}
+  - {id: cello-expression-03, at: "5:1", type: performance, parameter: expression, value: 0.72}
+  - {id: cello-expression-04, at: "7:1", type: performance, parameter: expression, value: 0.46}
+  - {id: cello-ramp-01, at: "3:1", type: dynamic_ramp, end: "6:2", from: mp, to: f, controller: 11}
+  - {id: cello-ramp-02, at: "6:3", type: dynamic_ramp, end: "8:4", from: mf, to: p, controller: 11}
+measures:
+  "1":
+    v1:
+      - {id: cello-m01-01, p: D3, d: 1/4, dyn: p}
+      - {id: cello-m01-02, p: F3, d: 1/4}
+      - {id: cello-m01-03, p: E3, d: 1/4}
+      - {id: cello-m01-04, p: D3, d: 1/4}
+  "2":
+    v1:
+      - {id: cello-m02-01, p: A2, d: 1/2, dyn: p}
+      - {id: cello-m02-02, p: C#3, d: 1/4}
+      - {id: cello-m02-03, p: D3, d: 1/4}
+  "3":
+    v1:
+      - {id: cello-rf-m03-01, p: G3, d: 1/4, dyn: mp, vel: 57, slur: start}
+      - {id: cello-rf-m03-02, p: Bb3, d: 1/4, vel: 54, slur: continue}
+      - {id: cello-rf-m03-03, p: A3, d: 1/4, vel: 52, slur: continue}
+      - {id: cello-rf-m03-04, p: G3, d: 1/4, vel: 55, slur: stop}
+  "4":
+    v1:
+      - {id: cello-rf-m04-01, p: F3, d: 1/2, dyn: mp, vel: 58, art: tenuto}
+      - {id: cello-rf-m04-02, p: A3, d: 1/4, vel: 61, slur: start}
+      - {id: cello-rf-m04-03, p: C4, d: 1/4, vel: 64, slur: stop}
+  "5":
+    v1:
+      - {id: cello-rf-m05-01, p: D3, d: 1/4, dyn: mf, vel: 68, slur: start}
+      - {id: cello-rf-m05-02, p: F3, d: 1/4, vel: 70, slur: continue}
+      - {id: cello-rf-m05-03, p: G3, d: 1/4, vel: 73, slur: continue}
+      - {id: cello-rf-m05-04, p: A3, d: 1/4, vel: 82, art: accent, slur: stop}
+  "6":
+    v1:
+      - {id: cello-rf-m06-01, p: Bb3, d: 1/2, dyn: mf, vel: 78, art: tenuto}
+      - {id: cello-rf-m06-02, p: A3, d: 1/4, vel: 69, slur: start}
+      - {id: cello-rf-m06-03, p: E3, d: 1/4, vel: 64, slur: stop}
+  "7":
+    v1:
+      - {id: cello-rf-m07-01, p: G3, d: 1/4, dyn: mp, vel: 60, slur: start}
+      - {id: cello-rf-m07-02, p: F3, d: 1/4, vel: 57, slur: continue}
+      - {id: cello-rf-m07-03, p: E3, d: 1/4, vel: 53, slur: continue}
+      - {id: cello-rf-m07-04, p: C#3, d: 1/4, vel: 50, slur: stop}
+  "8":
+    v1:
+      - {id: cello-m08-01, p: D3, d: 1/1, dyn: p, art: tenuto}

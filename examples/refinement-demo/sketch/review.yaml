@@ -1,0 +1,18 @@
+format: 1
+annotations:
+  - id: sketch-motive
+    at: "1:1"
+    end: "2:4"
+    category: composition
+    severity: note
+    message: Decide by listening whether the cello cell is distinctive enough to protect.
+    parts: [cello]
+    status: open
+  - id: sketch-static-middle
+    at: "3:1"
+    end: "6:4"
+    category: orchestration
+    severity: warning
+    message: Check whether long cello roots make the middle feel static before adding detail.
+    parts: [cello, piano]
+    status: open

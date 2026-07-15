@@ -8,7 +8,13 @@ from pathlib import Path
 
 import mido
 
-from ledgerline.model import DYNAMIC_VELOCITY, Event, Part, Piece
+from ledgerline.model import (
+    DYNAMIC_VELOCITY,
+    ArticulationDefinition,
+    Event,
+    Part,
+    Piece,
+)
 from ledgerline.timeline import Timeline
 
 TPQ = 480
@@ -117,13 +123,37 @@ def _meta_track(piece: Piece) -> mido.MidiTrack:
                 mido.MetaMessage("key_signature", key=key, time=0),
             )
         )
-    for change in piece.tempo_changes:
-        tick = _anchor_tick(piece, starts, change.measure, change.beat)
+    timeline = Timeline(piece)
+    tempo_by_tick: dict[int, float] = {}
+    for segment in timeline.tempo_segments:
+        start_tick = _ticks(segment.start_whole)
+        end_tick = _ticks(segment.end_whole)
+        tempo_by_tick[start_tick] = segment.bpm
+        if segment.curve == "linear":
+            events.append(
+                TimedMessage(
+                    start_tick,
+                    2,
+                    mido.MetaMessage(
+                        "marker",
+                        text=(
+                            "ledgerline:tempo-ramp:"
+                            f"from={segment.bpm:g};to={segment.end_bpm:g};curve=linear;"
+                            f"end_tick={end_tick}"
+                        ),
+                    ),
+                )
+            )
+            sample_ticks = list(range(start_tick, end_tick, max(1, TPQ // 8)))
+            sample_ticks.append(end_tick)
+            for tick in sample_ticks:
+                tempo_by_tick[tick] = segment.bpm_at(Fraction(tick, WHOLE_TICKS))
+    for tick, bpm in sorted(tempo_by_tick.items()):
         events.append(
             TimedMessage(
                 tick,
                 3,
-                mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(change.bpm), time=0),
+                mido.MetaMessage("set_tempo", tempo=mido.bpm2tempo(bpm), time=0),
             )
         )
     return _delta_track(events)
@@ -249,6 +279,47 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                         ),
                     )
                 )
+        elif control.kind == "dynamic_ramp":
+            end_tick = _anchor_tick(
+                piece,
+                starts,
+                int(control.end_measure),
+                Fraction(control.end_beat),
+            )
+            start_value = DYNAMIC_VELOCITY[str(control.start_dynamic)]
+            end_value = DYNAMIC_VELOCITY[str(control.end_dynamic)]
+            events.append(
+                TimedMessage(
+                    tick,
+                    3,
+                    mido.MetaMessage(
+                        "marker",
+                        text=(
+                            "ledgerline:dynamic-ramp:"
+                            f"from={control.start_dynamic};to={control.end_dynamic};"
+                            f"controller={control.controller};end_tick={end_tick}"
+                        ),
+                    ),
+                )
+            )
+            sample_ticks = list(range(tick, end_tick, max(1, TPQ // 16)))
+            sample_ticks.append(end_tick)
+            for sample_tick in sample_ticks:
+                position = (sample_tick - tick) / (end_tick - tick)
+                value = round(start_value + (end_value - start_value) * position)
+                events.append(
+                    TimedMessage(
+                        sample_tick,
+                        4,
+                        mido.Message(
+                            "control_change",
+                            channel=channel,
+                            control=int(control.controller),
+                            value=max(0, min(127, value)),
+                            time=0,
+                        ),
+                    )
+                )
     active_ties: dict[tuple[str, int], bool] = {}
     dynamic_by_voice: dict[str, int] = {}
     for number in range(1, piece.measures + 1):
@@ -258,30 +329,46 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
         for voice_name, voice_events in sorted(
             measure.voices.items(), key=lambda item: int(item[0][1:])
         ):
-            cursor = starts[number]
             velocity = dynamic_by_voice.get(voice_name, DYNAMIC_VELOCITY["mf"])
-            for event in voice_events:
+            for scheduled in timeline.schedule_voice(number, voice_events):
+                event = scheduled.event
+                start_tick = _ticks(scheduled.start_whole)
+                duration = _ticks(scheduled.duration)
                 if event.dynamic:
                     velocity = DYNAMIC_VELOCITY[event.dynamic]
                     dynamic_by_voice[voice_name] = velocity
                 event_velocity = event.velocity or velocity
-                event_velocity = _articulation_velocity(event, event_velocity)
-                duration = _ticks(event.duration)
-                gate = _articulation_gate(event)
-                end_tick = cursor + max(1, round(duration * gate))
-                start_whole = Fraction(cursor, WHOLE_TICKS)
+                definition = profile.articulation_definitions.get(event.articulation or "")
+                event_velocity = _articulation_velocity(
+                    event,
+                    event_velocity,
+                    definition,
+                )
+                gate = _articulation_gate(event, definition)
+                end_tick = start_tick + max(1, round(duration * gate))
+                start_whole = Fraction(start_tick, WHOLE_TICKS)
                 expression_seconds = timeline.seconds_at_whole(
-                    start_whole + event.duration
+                    start_whole + Fraction(duration, WHOLE_TICKS)
                 ) - timeline.seconds_at_whole(start_whole)
                 _append_note_expression(
                     events,
                     event,
-                    cursor,
+                    start_tick,
                     duration,
                     end_tick,
                     channel,
                     expression_seconds,
                 )
+                if event.slur:
+                    events.append(
+                        TimedMessage(
+                            start_tick,
+                            8,
+                            mido.MetaMessage(
+                                "marker", text=f"ledgerline:slur:{event.slur}"
+                            ),
+                        )
+                    )
                 for pitch in event.pitches:
                     sounding = pitch.midi + profile.transposition
                     tie_key = (voice_name, sounding)
@@ -289,7 +376,7 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                         if event.tie == "stop":
                             events.append(
                                 TimedMessage(
-                                    cursor + duration,
+                                    start_tick + duration,
                                     0,
                                     mido.Message(
                                         "note_off",
@@ -307,7 +394,7 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                     if not cursor_end_only:
                         events.append(
                             TimedMessage(
-                                cursor,
+                                start_tick,
                                 10,
                                 mido.Message(
                                     "note_on",
@@ -334,7 +421,6 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
                                     ),
                                 )
                             )
-                cursor += duration
     final_tick = starts[piece.measures + 1]
     for _, note in active_ties:
         events.append(
@@ -347,11 +433,15 @@ def _part_track(piece: Piece, part: Part, channel: int) -> mido.MidiTrack:
     return _delta_track(events)
 
 
-def _articulation_velocity(event: Event, velocity: int) -> int:
-    if event.articulation == "accent":
-        velocity += 10
-    elif event.articulation == "marcato":
-        velocity += 16
+def _articulation_velocity(
+    event: Event,
+    velocity: int,
+    definition: ArticulationDefinition | None = None,
+) -> int:
+    if event.articulation and definition is None:
+        raise ValueError(f"articulation lacks a profile definition: {event.articulation}")
+    if definition is not None:
+        velocity += definition.velocity_delta
     return max(1, min(127, velocity))
 
 
@@ -447,8 +537,13 @@ def _pitchwheel(cents: float) -> int:
     return max(-8192, min(8191, round(cents / 200.0 * 8192)))
 
 
-def _articulation_gate(event: Event) -> float:
-    return {"staccato": 0.5, "marcato": 0.72, "tenuto": 0.98}.get(event.articulation, 0.9)
+def _articulation_gate(
+    event: Event,
+    definition: ArticulationDefinition | None = None,
+) -> float:
+    if event.articulation and definition is None:
+        raise ValueError(f"articulation lacks a profile definition: {event.articulation}")
+    return definition.gate if definition is not None else 0.9
 
 
 def _ticks(duration: Fraction) -> int:

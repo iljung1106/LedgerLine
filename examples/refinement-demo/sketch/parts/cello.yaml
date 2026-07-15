@@ -1,0 +1,33 @@
+format: 1
+part: cello
+measures:
+  "1":
+    v1:
+      - {id: cello-m01-01, p: D3, d: 1/4, dyn: p}
+      - {id: cello-m01-02, p: F3, d: 1/4}
+      - {id: cello-m01-03, p: E3, d: 1/4}
+      - {id: cello-m01-04, p: D3, d: 1/4}
+  "2":
+    v1:
+      - {id: cello-m02-01, p: A2, d: 1/2, dyn: p}
+      - {id: cello-m02-02, p: C#3, d: 1/4}
+      - {id: cello-m02-03, p: D3, d: 1/4}
+  "3":
+    v1:
+      - {id: cello-sk-m03-01, p: G2, d: 1/1, dyn: p}
+  "4":
+    v1:
+      - {id: cello-sk-m04-01, p: A2, d: 1/1, dyn: p}
+  "5":
+    v1:
+      - {id: cello-sk-m05-01, p: Bb2, d: 1/1, dyn: mp}
+  "6":
+    v1:
+      - {id: cello-sk-m06-01, p: A2, d: 1/1, dyn: mp}
+  "7":
+    v1:
+      - {id: cello-sk-m07-01, p: G2, d: 1/2, dyn: p}
+      - {id: cello-sk-m07-02, p: A2, d: 1/2}
+  "8":
+    v1:
+      - {id: cello-m08-01, p: D3, d: 1/1, dyn: p, art: tenuto}

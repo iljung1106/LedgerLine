@@ -1,0 +1,22 @@
+format: 1
+title: Threshold Light - Production Treatment
+measures: 8
+time:
+  - {measure: 1, beats: 4, beat_type: 4}
+tempo:
+  - {at: "1:1", bpm: 68}
+  - {at: "5:1", bpm: 72}
+  - at: "7:1"
+    bpm: 64
+    ramp: {to: "8:1", bpm: 58, curve: linear}
+key:
+  - {measure: 1, fifths: -1, mode: minor}
+parts:
+  - id: piano
+    name: Piano
+    profile: starter.acoustic-grand-piano
+    file: parts/piano.yaml
+  - id: cello
+    name: Cello
+    profile: starter.cello
+    file: parts/cello.yaml

@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+import shutil
+import tempfile
+import uuid
+from datetime import UTC, datetime
 from fractions import Fraction
 from pathlib import Path
 from typing import Any
@@ -8,6 +12,8 @@ import yaml
 
 from ledgerline.diagnostics import Diagnostic, ValidationError
 from ledgerline.model import (
+    MUSICXML_ARTICULATIONS,
+    ArticulationDefinition,
     ControlEvent,
     InstrumentProfile,
     KeyChange,
@@ -116,6 +122,9 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
                 raise ValueError(f"duplicate keyswitch name: {normalized_name!r}")
             keyswitches[normalized_name] = parse_pitch(pitch)
         performance = _load_performance_bindings(data.get("performance", {}), path)
+        articulation_definitions = _load_articulation_definitions(
+            data.get("articulations", []), path
+        )
         return InstrumentProfile(
             id=str(data["id"]),
             name=str(data["name"]),
@@ -130,7 +139,8 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
             program=int(midi["program"]),
             clef_sign=str(clef["sign"]),
             clef_line=int(clef["line"]),
-            articulations=frozenset(data.get("articulations", [])),
+            articulations=frozenset(articulation_definitions),
+            articulation_definitions=articulation_definitions,
             keyswitches=keyswitches,
             performance=performance,
         )
@@ -139,6 +149,75 @@ def load_profile(root: Path, profile_id: str) -> InstrumentProfile:
             f"invalid profile: {path}",
             [Diagnostic("error", "profile.invalid", str(path), str(exc))],
         ) from exc
+
+
+def _load_articulation_definitions(
+    raw: object, path: Path
+) -> dict[str, ArticulationDefinition]:
+    if not isinstance(raw, list):
+        raise ValueError("articulations must be a list")
+    defaults = {
+        "staccato": ("staccato", 0.5, 0),
+        "tenuto": ("tenuto", 0.98, 0),
+        "accent": ("accent", 0.9, 10),
+        "marcato": ("strong-accent", 0.72, 16),
+    }
+    definitions: dict[str, ArticulationDefinition] = {}
+    for index, item in enumerate(raw):
+        item_path = f"{path}:articulations[{index}]"
+        if isinstance(item, str):
+            if item not in defaults:
+                raise ValueError(
+                    f"{item_path} custom articulation requires an explicit mapping"
+                )
+            musicxml, gate, velocity_delta = defaults[item]
+            definition = ArticulationDefinition(item, musicxml, None, gate, velocity_delta)
+        elif isinstance(item, dict):
+            _reject_unknown(
+                item,
+                {"id", "musicxml", "label", "gate", "velocity_delta"},
+                item_path,
+            )
+            articulation_id = item.get("id")
+            musicxml = item.get("musicxml")
+            label = item.get("label")
+            if not isinstance(articulation_id, str) or not articulation_id:
+                raise ValueError(f"{item_path}.id must be a non-empty string")
+            from ledgerline.model import ARTICULATION_ID_RE
+
+            if not ARTICULATION_ID_RE.fullmatch(articulation_id):
+                raise ValueError(f"{item_path}.id is invalid")
+            if musicxml not in MUSICXML_ARTICULATIONS:
+                raise ValueError(f"{item_path}.musicxml is unsupported: {musicxml!r}")
+            if musicxml == "other-articulation" and (
+                not isinstance(label, str) or not label.strip()
+            ):
+                raise ValueError(f"{item_path}.label is required for other-articulation")
+            if label is not None and (not isinstance(label, str) or not label.strip()):
+                raise ValueError(f"{item_path}.label must be a non-empty string")
+            gate = float(item.get("gate", 0.9))
+            velocity_delta = item.get("velocity_delta", 0)
+            if not 0.05 <= gate <= 1.0:
+                raise ValueError(f"{item_path}.gate must be between 0.05 and 1")
+            if (
+                isinstance(velocity_delta, bool)
+                or not isinstance(velocity_delta, int)
+                or not -64 <= velocity_delta <= 64
+            ):
+                raise ValueError(f"{item_path}.velocity_delta must be an integer from -64 to 64")
+            definition = ArticulationDefinition(
+                articulation_id,
+                str(musicxml),
+                label.strip() if isinstance(label, str) else None,
+                gate,
+                velocity_delta,
+            )
+        else:
+            raise ValueError(f"{item_path} must be a string or mapping")
+        if definition.id in definitions:
+            raise ValueError(f"duplicate articulation id: {definition.id!r}")
+        definitions[definition.id] = definition
+    return definitions
 
 
 def _load_performance_bindings(raw: object, path: Path) -> dict[str, PerformanceBinding]:
@@ -202,9 +281,38 @@ def load_piece(root: str | Path) -> Piece:
         time_changes = tuple(_time_change(item, index) for index, item in enumerate(data["time"]))
         tempo_changes = []
         for index, item in enumerate(data["tempo"]):
-            _reject_unknown(dict(item), {"at", "bpm"}, f"piece.yaml:tempo[{index}]")
+            _reject_unknown(dict(item), {"at", "bpm", "ramp"}, f"piece.yaml:tempo[{index}]")
             measure, beat = parse_anchor(str(item["at"]))
-            tempo_changes.append(TempoChange(measure, beat, float(item["bpm"])))
+            ramp = item.get("ramp")
+            if ramp is None:
+                tempo_changes.append(TempoChange(measure, beat, float(item["bpm"])))
+            else:
+                if not isinstance(ramp, dict):
+                    raise ValueError(f"piece.yaml:tempo[{index}].ramp must be a mapping")
+                _reject_unknown(
+                    ramp,
+                    {"to", "bpm", "curve"},
+                    f"piece.yaml:tempo[{index}].ramp",
+                )
+                if set(ramp) not in ({"to", "bpm"}, {"to", "bpm", "curve"}):
+                    raise ValueError(
+                        f"piece.yaml:tempo[{index}].ramp requires to and bpm"
+                    )
+                end_measure, end_beat = parse_anchor(str(ramp["to"]))
+                curve = ramp.get("curve", "linear")
+                if curve != "linear":
+                    raise ValueError("tempo ramp curve must be linear")
+                tempo_changes.append(
+                    TempoChange(
+                        measure,
+                        beat,
+                        float(item["bpm"]),
+                        end_measure,
+                        end_beat,
+                        float(ramp["bpm"]),
+                        str(curve),
+                    )
+                )
         key_changes = tuple(_key_change(item, index) for index, item in enumerate(data["key"]))
         if not time_changes or time_changes[0].measure != 1:
             raise ValueError("time changes must start at measure 1")
@@ -260,10 +368,200 @@ def load_piece(root: str | Path) -> Piece:
     from ledgerline.motifs import apply_project_motifs
 
     piece = apply_project_motifs(piece)
+    _validate_authored_ids(piece, diagnostics)
     diagnostics.extend(validate_piece(piece))
     if any(item.severity == "error" for item in diagnostics):
         raise ValidationError("project validation failed", diagnostics)
     return piece
+
+
+def prepare_ids(root: str | Path, *, dry_run: bool = False) -> dict[str, Any]:
+    """Add persistent IDs to authored notes, controls, and automation points.
+
+    Existing IDs are preserved. A dry run returns the exact deterministic IDs that a subsequent
+    apply would write. Applying creates a source snapshot before atomically replacing YAML files.
+    """
+
+    root_path = Path(root).resolve()
+    piece = load_piece(root_path)
+    from ledgerline.automation import load_automation
+
+    load_automation(root_path, piece)
+    piece_data = _read_yaml(root_path / "piece.yaml")
+    documents: dict[Path, dict[str, Any]] = {}
+    used: set[str] = set()
+    changes: list[dict[str, str]] = []
+
+    for reference in piece_data["parts"]:
+        part_id = str(reference["id"])
+        path = (root_path / str(reference["file"])).resolve()
+        data = _read_yaml(path)
+        documents[path] = data
+        for raw_measure, measure in data.get("measures", {}).items():
+            for voice, events in measure.items():
+                for index, event in enumerate(events):
+                    existing = event.get("id")
+                    if existing:
+                        used.add(str(existing))
+                        continue
+                    if event.get("r", False):
+                        continue
+                    location = f"parts/{part_id}/measures/{raw_measure}/{voice}/{index}"
+                    event_id = _prepared_id("evt", location, used)
+                    event["id"] = event_id
+                    changes.append(
+                        {
+                            "kind": "event",
+                            "path": _relative(path, root_path),
+                            "location": location,
+                            "id": event_id,
+                        }
+                    )
+        for index, control in enumerate(data.get("controls", [])):
+            existing = control.get("id")
+            if existing:
+                used.add(str(existing))
+                continue
+            location = f"parts/{part_id}/controls/{index}"
+            control_id = _prepared_id("ctl", location, used)
+            control["id"] = control_id
+            changes.append(
+                {
+                    "kind": "control",
+                    "path": _relative(path, root_path),
+                    "location": location,
+                    "id": control_id,
+                }
+            )
+
+    automation_path = root_path / "automation.yaml"
+    if automation_path.is_file():
+        automation = _read_yaml(automation_path)
+        documents[automation_path] = automation
+        for lane_index, lane in enumerate(automation.get("lanes", [])):
+            lane_id = str(lane.get("id", f"lane-{lane_index}"))
+            for point_index, point in enumerate(lane.get("points", [])):
+                existing = point.get("id")
+                if existing:
+                    used.add(str(existing))
+                    continue
+                location = f"automation/{lane_id}/points/{point_index}"
+                point_id = _prepared_id("aut", location, used)
+                point["id"] = point_id
+                changes.append(
+                    {
+                        "kind": "automation_point",
+                        "path": _relative(automation_path, root_path),
+                        "location": location,
+                        "id": point_id,
+                    }
+                )
+
+    changed_paths = sorted(
+        {root_path / item["path"] for item in changes}, key=lambda item: item.as_posix()
+    )
+    snapshot: str | None = None
+    if changes and not dry_run:
+        stamp = datetime.now(UTC).strftime("%Y%m%dT%H%M%S.%fZ")
+        snapshot_path = root_path / ".ledgerline" / "history" / f"prepare-ids-{stamp}"
+        before = {path: path.read_bytes() for path in changed_paths}
+        try:
+            for path in changed_paths:
+                backup = snapshot_path / path.relative_to(root_path)
+                backup.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copyfile(path, backup)
+            for path in changed_paths:
+                _write_yaml_atomic(path, documents[path])
+            piece = load_piece(root_path)
+            load_automation(root_path, piece)
+        except Exception:
+            for path, content in before.items():
+                _write_bytes_atomic(path, content)
+            raise
+        snapshot = _relative(snapshot_path, root_path)
+    return {
+        "schema_version": "1",
+        "status": "dry-run" if dry_run else "ok",
+        "project": str(root_path),
+        "changed": len(changes),
+        "files": [_relative(path, root_path) for path in changed_paths],
+        "changes": changes,
+        "snapshot": snapshot,
+    }
+
+
+def _validate_authored_ids(piece: Piece, diagnostics: list[Diagnostic]) -> None:
+    seen: dict[str, str] = {}
+    for part in piece.parts:
+        for number, measure in part.measures.items():
+            for voice, events in measure.voices.items():
+                for index, event in enumerate(events):
+                    if event.id:
+                        _record_authored_id(
+                            event.id,
+                            f"{part.source_path}:measures[{number}].{voice}[{index}]",
+                            seen,
+                            diagnostics,
+                        )
+        for index, control in enumerate(part.controls):
+            if control.id:
+                _record_authored_id(
+                    control.id,
+                    f"{part.source_path}:controls[{index}]",
+                    seen,
+                    diagnostics,
+                )
+
+
+def _record_authored_id(
+    authored_id: str,
+    path: str,
+    seen: dict[str, str],
+    diagnostics: list[Diagnostic],
+) -> None:
+    previous = seen.get(authored_id)
+    if previous is None:
+        seen[authored_id] = path
+        return
+    diagnostics.append(
+        Diagnostic(
+            "error",
+            "authored_id.duplicate",
+            path,
+            f"Authored ID {authored_id!r} is already used at {previous}.",
+        )
+    )
+
+
+def _prepared_id(prefix: str, location: str, used: set[str]) -> str:
+    counter = 0
+    while True:
+        seed = location if counter == 0 else f"{location}:{counter}"
+        candidate = f"{prefix}_{uuid.uuid5(uuid.NAMESPACE_URL, f'ledgerline:{seed}').hex}"
+        if candidate not in used:
+            used.add(candidate)
+            return candidate
+        counter += 1
+
+
+def _relative(path: Path, root: Path) -> str:
+    return path.relative_to(root).as_posix()
+
+
+def _write_yaml_atomic(path: Path, data: dict[str, Any]) -> None:
+    content = yaml.safe_dump(data, sort_keys=False, allow_unicode=True).encode("utf-8")
+    _write_bytes_atomic(path, content)
+
+
+def _write_bytes_atomic(path: Path, content: bytes) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        dir=path.parent, prefix=f".{path.name}.", delete=False
+    ) as handle:
+        temporary = Path(handle.name)
+        handle.write(content)
+        handle.flush()
+    temporary.replace(path)
 
 
 def _load_part(
@@ -458,7 +756,7 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                     "error", "piece.key_mode", "piece.yaml:key", "Mode must be major or minor."
                 )
             )
-    for change in piece.tempo_changes:
+    for change_index, change in enumerate(piece.tempo_changes):
         if not 1 <= change.measure <= piece.measures or change.bpm <= 0:
             diagnostics.append(
                 Diagnostic(
@@ -477,11 +775,59 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                     "Tempo anchor is outside the target measure.",
                 )
             )
+        elif change.ramp_end_measure is not None:
+            if (
+                change.ramp_end_beat is None
+                or change.ramp_bpm is None
+                or change.ramp_curve != "linear"
+                or change.ramp_bpm <= 0
+                or not 1 <= change.ramp_end_measure <= piece.measures
+                or change.ramp_end_beat > piece.time_at(change.ramp_end_measure).beats
+                or _anchor_whole(piece, change.ramp_end_measure, change.ramp_end_beat)
+                <= _anchor_whole(piece, change.measure, change.beat)
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "piece.tempo_ramp_invalid",
+                        "piece.yaml:tempo",
+                        (
+                            "Tempo ramps require a later in-piece endpoint, positive BPM, "
+                            "and linear curve."
+                        ),
+                    )
+                )
+            elif change_index + 1 < len(piece.tempo_changes):
+                following = piece.tempo_changes[change_index + 1]
+                ramp_end = _anchor_whole(
+                    piece, change.ramp_end_measure, change.ramp_end_beat
+                )
+                following_start = _anchor_whole(piece, following.measure, following.beat)
+                if ramp_end > following_start:
+                    diagnostics.append(
+                        Diagnostic(
+                            "error",
+                            "piece.tempo_ramp_overlap",
+                            "piece.yaml:tempo",
+                            "Tempo ramp overlaps the next authored tempo change.",
+                        )
+                    )
+                elif ramp_end == following_start and change.ramp_bpm != following.bpm:
+                    diagnostics.append(
+                        Diagnostic(
+                            "error",
+                            "piece.tempo_ramp_endpoint_conflict",
+                            "piece.yaml:tempo",
+                            "Tempo at a ramp endpoint must match a change at the same anchor.",
+                        )
+                    )
     for part in piece.parts:
         profile = piece.profiles[part.profile_id]
         _validate_controls(piece, part, profile, diagnostics)
         declared_staves = {staff.number for staff in part.staves}
         active_ties: dict[str, set[int]] = {}
+        active_slurs: dict[str, bool] = {}
+        active_tuplets: dict[str, tuple[int, int] | None] = {}
         for number in part.measures:
             if not 1 <= number <= piece.measures:
                 diagnostics.append(
@@ -499,6 +845,8 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
             expected = piece.time_at(number).length
             for voice_name, events in measure.voices.items():
                 tie_pitches = active_ties.setdefault(voice_name, set())
+                slur_active = active_slurs.setdefault(voice_name, False)
+                tuplet_active = active_tuplets.setdefault(voice_name, None)
                 actual = sum((event.duration for event in events), start=expected * 0)
                 if actual != expected:
                     diagnostics.append(
@@ -509,6 +857,7 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                             f"Voice totals {actual}; meter requires {expected}.",
                         )
                     )
+                grace_steal = 0.0
                 for event_index, event in enumerate(events):
                     event_path = (
                         f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]"
@@ -532,12 +881,119 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                             )
                         )
                     event_midis = {pitch.midi for pitch in event.pitches}
+                    if event.grace is None and (event.duration * 1920).denominator != 1:
+                        diagnostics.append(
+                            Diagnostic(
+                                "error",
+                                "notation.duration_unrepresentable",
+                                event_path,
+                                "Event duration cannot be represented exactly at 480 MIDI TPQ.",
+                            )
+                        )
+                    if event.grace is not None:
+                        grace_steal += event.grace.steal
+                        following = next(
+                            (
+                                candidate
+                                for candidate in events[event_index + 1 :]
+                                if not candidate.grace
+                            ),
+                            None,
+                        )
+                        if following is None:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    "grace.no_following_note",
+                                    event_path,
+                                    (
+                                        "A grace-note group must precede a measured note in "
+                                        "the same voice and measure."
+                                    ),
+                                )
+                            )
+                        elif (
+                            following.duration
+                            * Fraction(str(event.grace.steal))
+                            * 1920
+                        ).denominator != 1:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    "grace.duration_unrepresentable",
+                                    event_path,
+                                    (
+                                        "Grace steal duration cannot be represented exactly "
+                                        "at 480 MIDI TPQ."
+                                    ),
+                                )
+                            )
+                        elif grace_steal > 0.5:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    "grace.steal_excessive",
+                                    event_path,
+                                    (
+                                        "A grace-note group may steal at most half of its "
+                                        "following note."
+                                    ),
+                                )
+                            )
+                    else:
+                        grace_steal = 0.0
+                    if event.slur == "start":
+                        if slur_active:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    "slur.duplicate_start",
+                                    event_path,
+                                    "This minimal contract supports one active slur per voice.",
+                                )
+                            )
+                        slur_active = True
+                    elif event.slur in {"continue", "stop"} and not slur_active:
+                        diagnostics.append(
+                            Diagnostic(
+                                "error",
+                                "slur.without_start",
+                                event_path,
+                                "Slur continuation or stop has no active start in this voice.",
+                            )
+                        )
+                    if event.slur == "stop":
+                        slur_active = False
+                    if event.tuplet is not None:
+                        ratio = (event.tuplet.actual, event.tuplet.normal)
+                        if event.tuplet.type == "start":
+                            if tuplet_active is not None:
+                                diagnostics.append(
+                                    Diagnostic(
+                                        "error",
+                                        "tuplet.duplicate_start",
+                                        event_path,
+                                        "Nested tuplets are outside the supported contract.",
+                                    )
+                                )
+                            tuplet_active = ratio
+                        elif tuplet_active is None or tuplet_active != ratio:
+                            diagnostics.append(
+                                Diagnostic(
+                                    "error",
+                                    "tuplet.without_matching_start",
+                                    event_path,
+                                    "Tuplet continuation or stop has no matching active ratio.",
+                                )
+                            )
+                        if event.tuplet.type == "stop":
+                            tuplet_active = None
                     if event.tie in {"stop", "continue"} and not event_midis <= tie_pitches:
                         diagnostics.append(
                             Diagnostic(
                                 "error",
                                 "tie.stop_without_start",
-                                f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]",
+                                event_path,
                                 "A tie stop or continuation has no matching active tie.",
                             )
                         )
@@ -546,7 +1002,7 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                             Diagnostic(
                                 "error",
                                 "tie.duplicate_start",
-                                f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]",
+                                event_path,
                                 "A tie starts while the same pitch is already tied.",
                             )
                         )
@@ -559,7 +1015,7 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                             Diagnostic(
                                 "error",
                                 "instrument.articulation_unsupported",
-                                f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]",
+                                event_path,
                                 f"{profile.id} does not declare {event.articulation!r}.",
                             )
                         )
@@ -570,7 +1026,7 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                                 Diagnostic(
                                     "error",
                                     "instrument.range_absolute",
-                                    f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]",
+                                    event_path,
                                     f"{pitch} sounds outside {profile.name}'s absolute range.",
                                 )
                             )
@@ -583,10 +1039,12 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                                 Diagnostic(
                                     "warning",
                                     "instrument.range_comfortable",
-                                    f"{part.source_path}:measures[{number}].{voice_name}[{event_index}]",
+                                    event_path,
                                     f"{pitch} is outside {profile.name}'s comfortable range.",
                                 )
                             )
+                active_slurs[voice_name] = slur_active
+                active_tuplets[voice_name] = tuplet_active
         for voice_name, pitches in active_ties.items():
             if pitches:
                 diagnostics.append(
@@ -595,6 +1053,26 @@ def validate_piece(piece: Piece) -> list[Diagnostic]:
                         "tie.unclosed",
                         str(part.source_path),
                         f"Voice {voice_name} ends with unclosed tied pitches: {sorted(pitches)}.",
+                    )
+                )
+        for voice_name, active in active_slurs.items():
+            if active:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "slur.unclosed",
+                        str(part.source_path),
+                        f"Voice {voice_name} ends with an unclosed slur.",
+                    )
+                )
+        for voice_name, active in active_tuplets.items():
+            if active is not None:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "tuplet.unclosed",
+                        str(part.source_path),
+                        f"Voice {voice_name} ends with an unclosed tuplet.",
                     )
                 )
     return diagnostics
@@ -608,6 +1086,8 @@ def _validate_controls(
 ) -> None:
     pedal_down = False
     cc_at_anchor: dict[tuple[int, Fraction, int], int] = {}
+    cc_points: list[tuple[Fraction, int, str]] = []
+    dynamic_ranges: list[tuple[Fraction, Fraction, int, str]] = []
     indexed = sorted(
         enumerate(part.controls),
         key=lambda item: (item[1].measure, item[1].beat, item[0]),
@@ -638,6 +1118,13 @@ def _validate_controls(
                     )
                 )
             cc_at_anchor[key] = int(control.value)
+            cc_points.append(
+                (
+                    _anchor_whole(piece, control.measure, control.beat),
+                    int(control.controller),
+                    path,
+                )
+            )
         elif control.kind == "pedal":
             if control.pedal_action == "down":
                 if pedal_down:
@@ -684,6 +1171,55 @@ def _validate_controls(
                     ),
                 )
             )
+        elif control.kind == "dynamic_ramp":
+            if (
+                control.end_measure is None
+                or control.end_beat is None
+                or not 1 <= control.end_measure <= piece.measures
+                or control.end_beat > piece.time_at(control.end_measure).beats
+                or _anchor_whole(piece, control.end_measure, control.end_beat)
+                <= _anchor_whole(piece, control.measure, control.beat)
+            ):
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "dynamic_ramp.invalid_range",
+                        path,
+                        "A dynamic ramp must end after it starts at a valid piece anchor.",
+                    )
+                )
+            else:
+                dynamic_ranges.append(
+                    (
+                        _anchor_whole(piece, control.measure, control.beat),
+                        _anchor_whole(piece, control.end_measure, control.end_beat),
+                        int(control.controller),
+                        path,
+                    )
+                )
+    for index, (start, end, controller, path) in enumerate(dynamic_ranges):
+        for other_start, other_end, other_controller, _ in dynamic_ranges[:index]:
+            if controller == other_controller and start < other_end and other_start < end:
+                diagnostics.append(
+                    Diagnostic(
+                        "error",
+                        "dynamic_ramp.overlap",
+                        path,
+                        f"Dynamic ramps overlap on controller {controller}.",
+                    )
+                )
+        if any(
+            point_controller == controller and start <= point <= end
+            for point, point_controller, _ in cc_points
+        ):
+            diagnostics.append(
+                Diagnostic(
+                    "error",
+                    "dynamic_ramp.cc_conflict",
+                    path,
+                    f"A discrete CC conflicts with the ramp on controller {controller}.",
+                )
+            )
     if pedal_down:
         diagnostics.append(
             Diagnostic(
@@ -693,3 +1229,10 @@ def _validate_controls(
                 "Sustain pedal remains down at the end of the piece; author an explicit up event.",
             )
         )
+
+
+def _anchor_whole(piece: Piece, measure: int, beat: Fraction) -> Fraction:
+    cursor = Fraction(0)
+    for number in range(1, measure):
+        cursor += piece.time_at(number).length
+    return cursor + (beat - 1) * Fraction(1, piece.time_at(measure).beat_type)

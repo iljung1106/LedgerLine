@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from fractions import Fraction
 
-from ledgerline.model import Piece
+from ledgerline.model import Event, Piece, TempoChange
 
 TPQ = 480
 WHOLE_TICKS = TPQ * 4
@@ -25,10 +26,37 @@ class TempoSegment:
     end_whole: Fraction
     start_seconds: float
     bpm: float
+    end_bpm: float | None = None
+    curve: str = "step"
 
     @property
     def duration_seconds(self) -> float:
-        return float((self.end_whole - self.start_whole) * 4) * 60.0 / self.bpm
+        return self.seconds_until(self.end_whole)
+
+    def seconds_until(self, whole: Fraction) -> float:
+        quarters = float((whole - self.start_whole) * 4)
+        total_quarters = float((self.end_whole - self.start_whole) * 4)
+        target = self.end_bpm if self.end_bpm is not None else self.bpm
+        if self.curve != "linear" or target == self.bpm or total_quarters == 0:
+            return quarters * 60.0 / self.bpm
+        slope = (target - self.bpm) / total_quarters
+        current = self.bpm + slope * quarters
+        return 60.0 / slope * math.log(current / self.bpm)
+
+    def bpm_at(self, whole: Fraction) -> float:
+        target = self.end_bpm if self.end_bpm is not None else self.bpm
+        if self.curve != "linear" or target == self.bpm:
+            return self.bpm
+        span = self.end_whole - self.start_whole
+        position = float((whole - self.start_whole) / span) if span else 0.0
+        return self.bpm + (target - self.bpm) * position
+
+
+@dataclass(frozen=True, slots=True)
+class ScheduledEvent:
+    event: Event
+    start_whole: Fraction
+    duration: Fraction
 
 
 class Timeline:
@@ -66,9 +94,50 @@ class Timeline:
             raise ValueError(f"timeline position outside piece: {whole}")
         for segment in self.tempo_segments:
             if whole <= segment.end_whole:
-                offset = float((whole - segment.start_whole) * 4) * 60.0 / segment.bpm
-                return segment.start_seconds + offset
+                return segment.start_seconds + segment.seconds_until(whole)
         return sum(segment.duration_seconds for segment in self.tempo_segments)
+
+    def bpm_at_whole(self, whole: Fraction) -> float:
+        if whole < 0 or whole > self.end_whole:
+            raise ValueError(f"timeline position outside piece: {whole}")
+        for segment in self.tempo_segments:
+            if whole <= segment.end_whole:
+                return segment.bpm_at(whole)
+        return self.tempo_segments[-1].bpm_at(self.end_whole)
+
+    def schedule_voice(
+        self,
+        measure: int,
+        events: tuple[Event, ...],
+    ) -> tuple[ScheduledEvent, ...]:
+        """Schedule measured and grace events on the shared musical timeline."""
+
+        cursor = self.measure_starts[measure]
+        pending: list[Event] = []
+        scheduled: list[ScheduledEvent] = []
+        for event in events:
+            if event.grace is not None:
+                pending.append(event)
+                continue
+            allocations = [
+                event.duration * Fraction(str(grace.grace.steal)) for grace in pending
+            ]
+            stolen = sum(allocations, start=Fraction(0))
+            if stolen >= event.duration:
+                raise ValueError("grace-note group leaves no duration for its following note")
+            grace_cursor = cursor
+            for grace, allocation in zip(pending, allocations, strict=True):
+                _whole_to_ticks(allocation)
+                scheduled.append(ScheduledEvent(grace, grace_cursor, allocation))
+                grace_cursor += allocation
+            performed_duration = event.duration - stolen
+            _whole_to_ticks(performed_duration)
+            scheduled.append(ScheduledEvent(event, cursor + stolen, performed_duration))
+            cursor += event.duration
+            pending = []
+        if pending:
+            raise ValueError("grace-note group has no following measured note")
+        return tuple(scheduled)
 
     def total_seconds(self, *, tail_seconds: float = 0.0) -> float:
         if tail_seconds < 0 or tail_seconds > 600:
@@ -94,6 +163,8 @@ class Timeline:
                     "start_seconds": segment.start_seconds,
                     "duration_seconds": segment.duration_seconds,
                     "bpm": segment.bpm,
+                    "end_bpm": segment.end_bpm,
+                    "curve": segment.curve,
                 }
                 for segment in self.tempo_segments
             ],
@@ -109,20 +180,41 @@ class Timeline:
         return starts
 
     def _tempo_segments(self) -> tuple[TempoSegment, ...]:
-        anchors: list[tuple[Fraction, float]] = []
+        anchors: list[tuple[Fraction, TempoChange]] = []
         for change in self.piece.tempo_changes:
             time = self.piece.time_at(change.measure)
             whole = self.measure_starts[change.measure] + (change.beat - 1) * Fraction(
                 1, time.beat_type
             )
-            anchors.append((whole, change.bpm))
+            anchors.append((whole, change))
         segments: list[TempoSegment] = []
         seconds = 0.0
-        for index, (start, bpm) in enumerate(anchors):
+        for index, (start, raw_change) in enumerate(anchors):
+            change = raw_change
             end = anchors[index + 1][0] if index + 1 < len(anchors) else self.end_whole
-            segment = TempoSegment(start, end, seconds, bpm)
-            segments.append(segment)
-            seconds += segment.duration_seconds
+            if change.ramp_end_measure is not None:
+                ramp_time = self.piece.time_at(change.ramp_end_measure)
+                ramp_end = self.measure_starts[change.ramp_end_measure] + (
+                    change.ramp_end_beat - 1
+                ) * Fraction(1, ramp_time.beat_type)
+                ramp = TempoSegment(
+                    start,
+                    ramp_end,
+                    seconds,
+                    change.bpm,
+                    change.ramp_bpm,
+                    "linear",
+                )
+                segments.append(ramp)
+                seconds += ramp.duration_seconds
+                if ramp_end < end:
+                    hold = TempoSegment(ramp_end, end, seconds, change.ramp_bpm)
+                    segments.append(hold)
+                    seconds += hold.duration_seconds
+            else:
+                segment = TempoSegment(start, end, seconds, change.bpm)
+                segments.append(segment)
+                seconds += segment.duration_seconds
         return tuple(segments)
 
 

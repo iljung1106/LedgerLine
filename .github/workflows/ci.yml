@@ -17,19 +17,71 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: studio-ui/package-lock.json
       - name: Install
         run: python -m pip install -e ".[dev]"
+      - name: Install Studio UI
+        working-directory: studio-ui
+        run: npm ci
+      - name: Test Studio UI
+        working-directory: studio-ui
+        run: npm test
+      - name: Build Studio UI
+        working-directory: studio-ui
+        run: npm run build
+      - name: Install Playwright Chromium
+        working-directory: studio-ui
+        run: npx playwright install chromium
+      - name: Test Studio end to end
+        working-directory: studio-ui
+        run: npx playwright test
       - name: Test
         run: python -m pytest -q
       - name: Lint
         run: python -m ruff check src tests scripts
       - name: Build wheel
         run: python -m pip wheel . --no-deps --wheel-dir dist-ci
+      - name: Verify plugin embeds this exact wheel
+        run: python scripts/verify_plugin_asset.py dist-ci plugins/ledgerline/assets
+      - name: Verify installed wheel runtime
+        run: python scripts/verify_packaged_runtime.py dist-ci
       - name: Compile examples
         run: |
           python -m ledgerline validate examples/nocturne --json
           python -m ledgerline compile examples/nocturne --json
+          python -m ledgerline prepare-ids examples/nocturne --dry-run --json
+          python -m ledgerline refine inspect examples/nocturne --json
           python -m ledgerline duration examples/nocturne --tail-seconds 3 --json
           python -m ledgerline automation examples/nocturne --json
           python -m ledgerline validate examples/performance-demo --json
           python -m ledgerline compile examples/performance-demo --json
+      - name: Upload Studio E2E diagnostics
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ledgerline-studio-e2e
+          path: |
+            .cache/playwright-report
+            .cache/playwright-results
+          if-no-files-found: ignore
+
+  external-engine-smoke:
+    # Opt-in on a Windows audio runner with the LEDGERLINE_FLUIDSYNTH,
+    # LEDGERLINE_SOUNDFONT and LEDGERLINE_FFMPEG environment variables set.
+    if: ${{ vars.LEDGERLINE_EXTERNAL_ENGINE_SMOKE == 'true' }}
+    runs-on: [self-hosted, windows, ledgerline-audio]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install smoke-test dependencies
+        run: python -m pip install -e .
+      - name: Render and decode with installed external engines
+        shell: pwsh
+        run: ./scripts/external-engine-smoke.ps1 -RequireConfig

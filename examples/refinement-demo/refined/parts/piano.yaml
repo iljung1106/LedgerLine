@@ -1,0 +1,72 @@
+format: 1
+part: piano
+staves:
+  - {number: 1, name: Upper, clef: {sign: G, line: 2}}
+  - {number: 2, name: Lower, clef: {sign: F, line: 4}}
+measures:
+  "1":
+    v1:
+      - {id: piano-rf-m01-01, p: D4, d: 1/4, dyn: p, staff: 1, art: tenuto}
+      - {id: piano-rf-m01-02, p: A4, d: 1/4, staff: 1}
+      - {id: piano-rf-m01-03, p: F4, d: 1/4, staff: 1}
+      - {id: piano-rf-m01-04, p: A4, d: 1/4, staff: 1}
+    v2:
+      - {id: piano-rf-m01-05, p: D2, d: 1/2, dyn: p, staff: 2}
+      - {id: piano-rf-m01-06, p: A2, d: 1/2, staff: 2}
+  "2":
+    v1:
+      - {id: piano-rf-m02-01, p: D4, d: 1/4, dyn: p, staff: 1}
+      - {id: piano-rf-m02-02, p: F4, d: 1/4, staff: 1}
+      - {id: piano-rf-m02-03, p: E4, d: 1/4, staff: 1}
+      - {id: piano-rf-m02-04, p: C#4, d: 1/4, staff: 1, art: tenuto}
+    v2:
+      - {id: piano-rf-m02-05, p: Bb1, d: 1/2, dyn: p, staff: 2}
+      - {id: piano-rf-m02-06, p: A1, d: 1/2, staff: 2}
+  "3":
+    v1:
+      - {id: piano-rf-m03-01, p: G4, d: 1/4, dyn: mp, staff: 1}
+      - {id: piano-rf-m03-02, p: D5, d: 1/4, staff: 1}
+      - {id: piano-rf-m03-03, p: Bb4, d: 1/4, staff: 1}
+      - {id: piano-rf-m03-04, p: A4, d: 1/4, staff: 1}
+    v2:
+      - {id: piano-rf-m03-05, p: G2, d: 1/2, dyn: mp, staff: 2}
+      - {id: piano-rf-m03-06, p: A2, d: 1/2, staff: 2}
+  "4":
+    v1:
+      - {id: piano-rf-m04-01, p: F4, d: 1/4, dyn: mp, staff: 1}
+      - {id: piano-rf-m04-02, p: A4, d: 1/4, staff: 1}
+      - {id: piano-rf-m04-03, p: C5, d: 1/4, staff: 1}
+      - {id: piano-rf-m04-04, p: A4, d: 1/4, staff: 1}
+    v2:
+      - {id: piano-rf-m04-05, p: D2, d: 1/2, dyn: mp, staff: 2}
+      - {id: piano-rf-m04-06, p: F2, d: 1/2, staff: 2}
+  "5":
+    v1:
+      - {id: piano-rf-m05-01, p: G4, d: 1/4, dyn: mf, staff: 1}
+      - {id: piano-rf-m05-02, p: Bb4, d: 1/4, staff: 1}
+      - {id: piano-rf-m05-03, p: D5, d: 1/4, staff: 1}
+      - {id: piano-rf-m05-04, p: F5, d: 1/4, staff: 1, art: accent}
+    v2:
+      - {id: piano-rf-m05-05, p: G2, d: 1/1, dyn: mp, staff: 2, art: tenuto}
+  "6":
+    v1:
+      - {id: piano-rf-m06-01, p: A4, d: 1/4, dyn: mf, staff: 1}
+      - {id: piano-rf-m06-02, p: C#5, d: 1/4, staff: 1}
+      - {id: piano-rf-m06-03, p: E5, d: 1/4, staff: 1, art: accent}
+      - {id: piano-rf-m06-04, p: C#5, d: 1/4, staff: 1}
+    v2:
+      - {id: piano-rf-m06-05, p: A2, d: 1/1, dyn: mf, staff: 2, art: tenuto}
+  "7":
+    v1:
+      - {id: piano-rf-m07-01, p: G4, d: 1/4, dyn: mp, staff: 1}
+      - {id: piano-rf-m07-02, p: Bb4, d: 1/4, staff: 1}
+      - {id: piano-rf-m07-03, p: A4, d: 1/4, staff: 1}
+      - {id: piano-rf-m07-04, p: E4, d: 1/4, staff: 1}
+    v2:
+      - {id: piano-rf-m07-05, p: G2, d: 1/2, dyn: mp, staff: 2}
+      - {id: piano-rf-m07-06, p: A2, d: 1/2, staff: 2}
+  "8":
+    v1:
+      - {id: piano-m08-01, p: [D4, F4, A4], d: 1/1, dyn: p, staff: 1, art: tenuto}
+    v2:
+      - {id: piano-rf-m08-02, p: D2, d: 1/1, dyn: pp, staff: 2, art: tenuto}

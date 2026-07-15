@@ -1,0 +1,53 @@
+{
+  "schema_version": "1",
+  "claims": [
+    "These changes are authored hypotheses for listening, not an aesthetic score.",
+    "Protected cello pitch and rhythm in measures 1-2 remain byte-for-byte equivalent as events."
+  ],
+  "passes": [
+    {
+      "from": "sketch",
+      "to": "refined",
+      "preserved_event_ids": [
+        "cello-m01-01", "cello-m01-02", "cello-m01-03", "cello-m01-04",
+        "cello-m02-01", "cello-m02-02", "cello-m02-03"
+      ],
+      "changed_scopes": [
+        "piano measures 1-8: split block harmony into registrally separated upper and bass voices",
+        "cello measures 3-7: replace static roots with a directed counterline",
+        "both parts: add local dynamics, attacks, and slur groupings"
+      ],
+      "rationale": [
+        "A moving bass clarifies harmonic direction without altering the protected opening cell.",
+        "Alternating activity gives the cello a role after its initial statement.",
+        "The crest at measures 5-6 is created through register and density rather than extra parts."
+      ],
+      "listening_checks": [
+        "Can the protected opening cell still be recalled at measure 7?",
+        "Does the piano bass clarify the cadence or make the low register heavy?",
+        "Does the measure 5-6 crest feel earned rather than merely louder?"
+      ]
+    },
+    {
+      "from": "refined",
+      "to": "production",
+      "preserved": "All note pitches, rhythms, event IDs, staff assignments, and voice assignments",
+      "changed_scopes": [
+        "tempo map: add a restrained final ritardando",
+        "performance: add attack velocities, CC11 ramps, semantic expression, and piano pedal",
+        "production: add plugin-parameter automation, buses, conservative master targets, and reference render nodes"
+      ],
+      "rationale": [
+        "Attack and sustain are shaped separately so note velocity does not stand in for phrase intensity.",
+        "Pedal changes follow harmony rather than remaining continuously down.",
+        "The deterministic reference route makes timing and routing regressions reproducible without implying instrumental realism."
+      ],
+      "listening_checks": [
+        "Do the cello sustains continue to grow after their attacks?",
+        "Are piano harmony changes clear at pedal changes?",
+        "Does the final ritardando breathe without stalling the cadence?",
+        "After replacing the reference synth with approved instruments, re-check masking and reverb depth."
+      ]
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+format: 1
+sample_rate: 48000
+block_size: 512
+tail_seconds: 1.0
+resources:
+  max_render_seconds: 90
+  max_stem_mb: 64
+  max_cache_mb: 256
+nodes:
+  - id: piano-reference
+    part: piano
+    engine: plugin
+    plugin_format: clap
+    instrument: assets/ledgerline-sine.clap.llplugin.json
+    tail_seconds: 0.5
+  - id: cello-reference
+    part: cello
+    engine: plugin
+    plugin_format: clap
+    instrument: assets/ledgerline-sine.clap.llplugin.json
+    tail_seconds: 0.5

@@ -27,6 +27,7 @@
               "additionalProperties": false,
               "required": ["at", "value"],
               "properties": {
+                "id": {"type": "string", "pattern": "^[a-z][a-z0-9_-]{2,127}$"},
                 "at": {"type": "string"},
                 "value": {"type": "number"},
                 "curve": {"enum": ["step", "linear", "smooth", "exponential", "bezier"]},

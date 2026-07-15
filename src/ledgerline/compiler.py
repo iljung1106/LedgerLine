@@ -14,6 +14,8 @@ from ledgerline.project import load_piece
 
 
 def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
+    from ledgerline.build_state import authored_revision, record_compile
+
     piece = load_piece(root)
     build = Path(output).resolve() if output else piece.root / "build"
     build.mkdir(parents=True, exist_ok=True)
@@ -75,26 +77,33 @@ def compile_project(root: str | Path, output: str | Path | None = None) -> dict:
         "schema_version": "1",
         "tool": {"name": "ledgerline", "version": __version__},
         "project": str(piece.root),
+        "source_revision": authored_revision(piece.root),
         "title": piece.title,
         "parts": [{"id": part.id, "name": part.name} for part in piece.parts],
         "inputs": [_file_record(path, piece.root) for path in inputs],
         "profiles": [_profile_record(piece.profiles[part.profile_id]) for part in piece.parts],
+        "notation_contract": _notation_contract(piece),
         "outputs": [_file_record(path, build) for path in outputs],
     }
     manifest_path = build / "manifest.json"
     manifest_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    return {
+    report = {
         "status": "ok",
         "project": str(piece.root),
+        "source_revision": manifest["source_revision"],
         "build": str(build),
         "musicxml": str(musicxml_path),
         "midi": str(midi_path),
         "part_midis": [str(path) for path in part_paths],
         "expression_plan": str(expression_path),
         "manifest": str(manifest_path),
+        "notation_contract": manifest["notation_contract"],
     }
+    if output is None:
+        record_compile(piece.root, report)
+    return report
 
 
 def _file_record(path: Path, relative_to: Path) -> dict[str, str | int]:
@@ -120,6 +129,15 @@ def _profile_record(profile) -> dict:
             "program": profile.program,
         },
         "articulations": sorted(profile.articulations),
+        "articulation_definitions": {
+            name: {
+                "musicxml": definition.musicxml,
+                "label": definition.label,
+                "gate": definition.gate,
+                "velocity_delta": definition.velocity_delta,
+            }
+            for name, definition in sorted(profile.articulation_definitions.items())
+        },
         "keyswitches": {name: str(pitch) for name, pitch in sorted(profile.keyswitches.items())},
         "performance": {
             name: {
@@ -135,3 +153,52 @@ def _profile_record(profile) -> dict:
     }
     canonical = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     return {**payload, "sha256": hashlib.sha256(canonical).hexdigest()}
+
+
+def _notation_contract(piece) -> dict:
+    events = [
+        event
+        for part in piece.parts
+        for measure in part.measures.values()
+        for voice in measure.voices.values()
+        for event in voice
+    ]
+    controls = [control for part in piece.parts for control in part.controls]
+    counts = {
+        "tuplet_events": sum(event.tuplet is not None for event in events),
+        "grace_notes": sum(event.grace is not None for event in events),
+        "slur_events": sum(event.slur is not None for event in events),
+        "dynamic_ramps": sum(control.kind == "dynamic_ramp" for control in controls),
+        "tempo_ramps": sum(change.ramp_bpm is not None for change in piece.tempo_changes),
+    }
+    return {
+        "schema_version": "1",
+        "features": counts,
+        "representations": {
+            "tuplets": {
+                "musicxml": "exact time-modification and tuplet notation",
+                "midi": "exact tick duration at 480 TPQ or compile failure",
+            },
+            "grace_notes": {
+                "musicxml": "exact grace type and authored steal-time-following",
+                "midi": "deterministic stolen-time scheduling within the following note slot",
+            },
+            "slurs": {
+                "musicxml": "exact slur notation",
+                "midi": "metadata marker only; no implicit controller approximation",
+                "midi_metadata_only": True,
+            },
+            "dynamic_ramps": {
+                "musicxml": "wedge plus explicit endpoint dynamics",
+                "midi": "sampled CC ramp plus exact ledgerline metadata marker",
+                "midi_sample_ticks": 30,
+            },
+            "tempo_ramps": {
+                "musicxml": (
+                    "visible tempo words/endpoints plus exact ledgerline:tempo-ramp metadata"
+                ),
+                "midi": "sampled tempo map plus exact ledgerline metadata marker",
+                "midi_sample_ticks": 60,
+            },
+        },
+    }

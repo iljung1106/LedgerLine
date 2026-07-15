@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import math
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,38 @@ class MixConfig:
     buses: dict[str, MixNode]
     master: dict[str, Any]
     legacy_reverb: dict[str, Any]
+
+
+def load_mix_document(root: str | Path) -> dict[str, Any]:
+    """Return the authored mix document after validating it against the runtime parser."""
+
+    path = Path(root).resolve() / "mix.yaml"
+    load_mix_config(root)
+    try:
+        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    except (OSError, yaml.YAMLError) as exc:  # pragma: no cover - load_mix_config reports first
+        raise ValidationError(
+            "mix.yaml is invalid",
+            [Diagnostic("error", "mix.invalid", str(path), str(exc))],
+        ) from exc
+    if not isinstance(data, dict):  # pragma: no cover - load_mix_config reports first
+        raise AssertionError("validated mix document is not a mapping")
+    return copy.deepcopy(data)
+
+
+def mix_config_to_dict(config: MixConfig) -> dict[str, Any]:
+    """Serialize the effective routing graph, including parser defaults, as JSON data."""
+
+    return {
+        "format": config.format,
+        "tracks": {node_id: _node_to_dict(node) for node_id, node in config.tracks.items()},
+        "buses": {node_id: _node_to_dict(node) for node_id, node in config.buses.items()},
+        "master": {
+            **{key: _jsonable(value) for key, value in config.master.items() if key != "inserts"},
+            "inserts": [_processor_to_dict(item) for item in config.master.get("inserts", ())],
+        },
+        "legacy_reverb": _jsonable(config.legacy_reverb),
+    }
 
 
 def load_mix_config(root: str | Path) -> MixConfig:
@@ -331,3 +364,27 @@ def _unknown(data: dict[str, Any], allowed: set[str], path: str) -> None:
     unknown = sorted(set(data) - allowed)
     if unknown:
         raise ValueError(f"{path} has unknown fields: {', '.join(unknown)}")
+
+
+def _node_to_dict(node: MixNode) -> dict[str, Any]:
+    return {
+        "gain_db": node.gain_db,
+        "pan": node.pan,
+        "output": node.output,
+        "sends": dict(node.sends),
+        "inserts": [_processor_to_dict(item) for item in node.inserts],
+    }
+
+
+def _processor_to_dict(processor: Processor) -> dict[str, Any]:
+    return {"type": processor.kind, **_jsonable(processor.settings)}
+
+
+def _jsonable(value: Any) -> Any:
+    if isinstance(value, tuple):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, list):
+        return [_jsonable(item) for item in value]
+    if isinstance(value, dict):
+        return {str(key): _jsonable(item) for key, item in value.items()}
+    return value

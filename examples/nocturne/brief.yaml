@@ -1,0 +1,33 @@
+format: 1
+purpose: Compact chamber fixture for drafting, refinement, rendering, and Studio review
+duration_seconds: 16
+trajectory:
+  - restrained and intimate
+  - briefly unsettled
+  - quietly resolved
+references: []
+required_instruments: [piano, cello]
+forbidden_sounds: []
+sections:
+  - id: phrase-a
+    from: "1:1"
+    to: "2:end"
+    function: establish the C-minor phrase and its harmonic pace
+  - id: phrase-b
+    from: "3:1"
+    to: "4:end"
+    function: answer the opening and complete the cadence
+roles:
+  - {part: piano, from: "1:1", to: "4:end", role: harmonic support and pulse}
+  - {part: cello, from: "1:1", to: "4:end", role: bass foundation and counterline}
+protected: []
+style_checks:
+  low_register_spacing: review
+  exposed_parallel_motion: review
+invariants:
+  - Keep the texture as an acoustic piano and cello duo.
+  - Preserve a clear four-measure phrase rather than extending the fixture.
+checkpoints:
+  - representative sketch
+  - refined phrase
+  - production render

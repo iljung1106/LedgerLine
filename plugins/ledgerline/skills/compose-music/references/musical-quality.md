@@ -2,6 +2,30 @@
 
 Use these as questions, not automatic rules or a numeric quality score.
 
+## Refinement protocol
+
+Finish a coherent sketch before polishing local details. Run one named pass at a time and record:
+the musical goal, part/section/measure scope, immutable material, evidence IDs, maximum edit count,
+expected audible effect, and a listening check. Validate and listen after each coherent change set;
+do not accumulate unrelated fixes into one opaque rewrite.
+
+1. **Structure:** motive identity and development, phrase direction, section contrast, transitions,
+   climax placement, and ending strength.
+2. **Harmony and voice-leading:** harmonic rhythm, bass logic, tendency-tone resolution, spacing,
+   parallels/crossing where stylistically relevant, and cadence weight.
+3. **Orchestration:** role clarity, register, playable range, density, doublings, color trajectory,
+   breathing/bowing, and masking risk.
+4. **Expression and performance:** attack versus sustain, phrase dynamics, articulation continuity,
+   CC1/CC11, pedal, keyswitch truth, tempo rhetoric, and humanly plausible gesture.
+5. **Production:** gain staging, panorama, depth, frequency/transient conflicts, bus processing,
+   headroom, loudness, and exact renderer/instrument/state provenance.
+6. **Final listening:** matched-loudness A/B, preserved identity, long-range pacing, translation, and
+   unresolved tradeoffs. A passing validator is not an approval.
+
+`refine inspect` produces candidates for these passes. A finding is not an instruction to edit and
+absence of a finding is not proof of quality. Prefer explanations anchored to exact events,
+measures, parts, or audio windows.
+
 ## Composition
 
 - State a recognizable motive early and transform it through rhythm, interval, register, harmony,

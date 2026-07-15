@@ -1,0 +1,35 @@
+format: 1
+lanes:
+  - id: piano-reference-brightness
+    target: parts.piano.plugin.brightness
+    unit: normalized
+    interpolation: smooth
+    points:
+      - {id: auto-piano-bright-01, at: "1:1", value: 0.32}
+      - {id: auto-piano-bright-02, at: "5:1", value: 0.58}
+      - {id: auto-piano-bright-03, at: "7:1", value: 0.40}
+      - {id: auto-piano-bright-04, at: "8:4", value: 0.28}
+  - id: cello-reference-brightness
+    target: parts.cello.plugin.brightness
+    unit: normalized
+    interpolation: smooth
+    points:
+      - {id: auto-cello-bright-01, at: "1:1", value: 0.26}
+      - {id: auto-cello-bright-02, at: "5:1", value: 0.52}
+      - {id: auto-cello-bright-03, at: "8:1", value: 0.30}
+  - id: cello-reference-gain
+    target: parts.cello.plugin.gain
+    unit: normalized
+    interpolation: linear
+    points:
+      - {id: auto-cello-gain-01, at: "1:1", value: 0.19}
+      - {id: auto-cello-gain-02, at: "5:1", value: 0.27}
+      - {id: auto-cello-gain-03, at: "8:1", value: 0.20}
+  - id: master-cadence-trim
+    target: master.gain_db
+    unit: db
+    interpolation: linear
+    points:
+      - {id: auto-master-gain-01, at: "1:1", value: 0.0}
+      - {id: auto-master-gain-02, at: "7:1", value: -0.5}
+      - {id: auto-master-gain-03, at: "8:4", value: -1.5}

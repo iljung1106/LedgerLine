@@ -4,8 +4,8 @@ import hashlib
 import json
 import os
 import shutil
-import subprocess
 import sys
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -14,6 +14,7 @@ import yaml
 
 from ledgerline.audio import resolve_ffmpeg
 from ledgerline.diagnostics import CapabilityError, Diagnostic, ValidationError
+from ledgerline.external_process import ExternalProcessCancelled, run_external
 from ledgerline.model import Piece
 from ledgerline.soundfont import read_presets
 from ledgerline.timeline import Timeline
@@ -112,7 +113,9 @@ def render_graph_project(
     *,
     ffmpeg: str | Path | None = None,
     timeout: int = 300,
+    cancel_event: threading.Event | None = None,
 ) -> dict:
+    from ledgerline.build_state import authored_revision, record_render
     from ledgerline.project import load_piece
 
     root = Path(project).resolve()
@@ -180,7 +183,15 @@ def render_graph_project(
         if not cached:
             raw_output.unlink(missing_ok=True)
             try:
-                _run_node(node, midi, raw_output, graph, build, timeout)
+                _run_node(
+                    node,
+                    midi,
+                    raw_output,
+                    graph,
+                    build,
+                    timeout,
+                    cancel_event=cancel_event,
+                )
                 _align_stem(
                     raw_output,
                     output,
@@ -189,8 +200,13 @@ def render_graph_project(
                     total_samples=total_samples,
                     sample_rate=graph.sample_rate,
                     timeout=timeout,
+                    cancel_event=cancel_event,
                 )
                 _write_receipt(receipt_path, node, output, cache_key)
+            except ExternalProcessCancelled:
+                raw_output.unlink(missing_ok=True)
+                output.with_suffix(".aligned.wav").unlink(missing_ok=True)
+                raise
             except Exception as exc:
                 failure = quarantine / f"{node.id}.json"
                 failure.write_text(
@@ -223,6 +239,7 @@ def render_graph_project(
                 "engine": node.engine,
                 "plugin_format": node.plugin_format,
                 "instrument": _file_identity(node.instrument),
+                "state": _file_identity(node.state) if node.state else None,
                 "renderer": _file_identity(node.executable) if node.executable else None,
                 "host_kind": "bundled-reference"
                 if node.engine == "plugin" and node.executable is None
@@ -235,11 +252,19 @@ def render_graph_project(
             }
         )
     preview = build / "preview.wav"
-    _mix_preview([Path(item["output"]["path"]) for item in rendered], preview, ffmpeg_path, timeout)
+    _mix_preview(
+        [Path(item["output"]["path"]) for item in rendered],
+        preview,
+        ffmpeg_path,
+        timeout,
+        cancel_event=cancel_event,
+    )
     report = {
         "schema_version": "2",
         "status": "ok",
         "project": str(root),
+        "source_revision": authored_revision(root),
+        "ffmpeg": str(ffmpeg_path),
         "sample_rate": graph.sample_rate,
         "block_size": graph.block_size,
         "estimated_duration_seconds": total_samples / graph.sample_rate,
@@ -255,6 +280,7 @@ def render_graph_project(
     (build / "render-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    record_render(root, report)
     return report
 
 
@@ -344,7 +370,11 @@ def _run_node(
     graph: RenderGraph,
     build: Path,
     timeout: int,
+    *,
+    cancel_event: threading.Event | None = None,
 ) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise ExternalProcessCancelled("render node cancelled before launch")
     if node.engine == "frozen":
         shutil.copyfile(node.instrument, output)
         return
@@ -415,16 +445,19 @@ def _run_node(
                 "--ledgerline-request",
                 str(request_path),
             ]
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        shell=False,
-        cwd=str(graph.root),
-    )
+    output.unlink(missing_ok=True)
+    try:
+        completed = run_external(
+            command,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cwd=graph.root,
+        )
+    except BaseException:
+        output.unlink(missing_ok=True)
+        raise
     if completed.returncode != 0 or not output.is_file() or output.stat().st_size <= 44:
+        output.unlink(missing_ok=True)
         raise CapabilityError(
             f"render node failed: {node.id}",
             [
@@ -454,8 +487,10 @@ def _align_stem(
     total_samples: int,
     sample_rate: int,
     timeout: int,
+    cancel_event: threading.Event | None = None,
 ) -> None:
     temporary = output.with_suffix(".aligned.wav")
+    temporary.unlink(missing_ok=True)
     filter_graph = f"atrim=start_sample={latency_samples},apad,atrim=end_sample={total_samples}"
     command = [
         str(ffmpeg),
@@ -471,10 +506,18 @@ def _align_stem(
         str(sample_rate),
         str(temporary),
     ]
-    completed = subprocess.run(
-        command, capture_output=True, text=True, timeout=timeout, shell=False
-    )
+    try:
+        completed = run_external(
+            command,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cwd=output.parent.parent,
+        )
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
     if completed.returncode != 0 or not temporary.is_file():
+        temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "stem latency/tail alignment failed",
             [Diagnostic("error", "render.align_failed", str(source), completed.stderr[-2000:])],
@@ -482,7 +525,16 @@ def _align_stem(
     os.replace(temporary, output)
 
 
-def _mix_preview(inputs: list[Path], output: Path, ffmpeg: Path, timeout: int) -> None:
+def _mix_preview(
+    inputs: list[Path],
+    output: Path,
+    ffmpeg: Path,
+    timeout: int,
+    *,
+    cancel_event: threading.Event | None = None,
+) -> None:
+    temporary = output.with_name(f".{output.stem}.rendering{output.suffix}")
+    temporary.unlink(missing_ok=True)
     command = [str(ffmpeg), "-hide_banner", "-y"]
     for path in inputs:
         command.extend(["-i", str(path)])
@@ -492,17 +544,26 @@ def _mix_preview(inputs: list[Path], output: Path, ffmpeg: Path, timeout: int) -
             f"amix=inputs={len(inputs)}:normalize=0",
             "-c:a",
             "pcm_s24le",
-            str(output),
+            str(temporary),
         ]
     )
-    completed = subprocess.run(
-        command, capture_output=True, text=True, timeout=timeout, shell=False
-    )
-    if completed.returncode != 0 or not output.is_file():
+    try:
+        completed = run_external(
+            command,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cwd=output.parent.parent,
+        )
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    if completed.returncode != 0 or not temporary.is_file():
+        temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "preview mix failed",
             [Diagnostic("error", "render.preview_failed", str(output), completed.stderr[-2000:])],
         )
+    os.replace(temporary, output)
 
 
 def _check_soundfont_coverage(soundfont: Path, midi: Path, part_id: str, root: Path) -> None:

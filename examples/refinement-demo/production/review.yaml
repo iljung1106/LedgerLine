@@ -1,0 +1,34 @@
+format: 1
+annotations:
+  - id: production-expression
+    at: "3:1"
+    end: "6:4"
+    category: performance
+    severity: note
+    message: Check that CC11 sustain growth continues after attacks rather than duplicating velocity.
+    parts: [cello, piano]
+    status: open
+  - id: production-pedal
+    at: "1:1"
+    end: "8:3"
+    category: performance
+    severity: warning
+    message: Check harmony clarity at every authored pedal change on the selected piano library.
+    parts: [piano]
+    status: open
+  - id: production-cadence
+    at: "7:1"
+    end: "8:4"
+    category: composition
+    severity: note
+    message: Judge whether the final ritardando breathes without stalling the cadence.
+    parts: [cello, piano]
+    status: open
+  - id: production-reference-limit
+    at: "1:1"
+    end: "8:4"
+    category: render
+    severity: warning
+    message: The deterministic reference synth proves routing and timing only; approve timbre after binding real instruments.
+    parts: [cello, piano]
+    status: open

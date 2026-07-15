@@ -1,0 +1,18 @@
+format: 1
+title: Threshold Light - Sketch
+measures: 8
+time:
+  - {measure: 1, beats: 4, beat_type: 4}
+tempo:
+  - {at: "1:1", bpm: 68}
+key:
+  - {measure: 1, fifths: -1, mode: minor}
+parts:
+  - id: piano
+    name: Piano
+    profile: starter.acoustic-grand-piano
+    file: parts/piano.yaml
+  - id: cello
+    name: Cello
+    profile: starter.cello
+    file: parts/cello.yaml

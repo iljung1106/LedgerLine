@@ -1,7 +1,8 @@
 import { useEffect, useRef } from "react";
+import { versionedMediaUrl } from "./timeline";
 import type { PeakMedia } from "./types";
 
-export function Waveform({ media, width, color = "#4fc4b2" }: { media: PeakMedia | null; width: number; color?: string }) {
+export function Waveform({ media, width, color = "#4fc4b2", onSeek }: { media: PeakMedia | null; width: number; color?: string; onSeek?: (seconds: number) => void }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
     const element = canvas.current;
@@ -33,6 +34,31 @@ export function Waveform({ media, width, color = "#4fc4b2" }: { media: PeakMedia
       context.fillRect(index * step, top, Math.max(1, step + 0.3), Math.max(1, bottom - top));
     });
     context.globalAlpha = 1;
+    const status = media.freshness ?? media.status;
+    if (status && status !== "ready") {
+      context.fillStyle = "rgba(123, 69, 33, 0.28)";
+      context.fillRect(0, 0, width, height);
+      context.fillStyle = "#f1c49d";
+      context.fillText(`Audio ${status}`, 16, 18);
+    }
   }, [media, width, color]);
-  return <canvas ref={canvas} className="waveform-canvas" aria-label="Aligned audio waveform" />;
+  const sourceLabel = media?.label ?? (media?.kind === "stem" ? "Selected stem" : "Master");
+  return <div
+    className="waveform-shell"
+    data-media-url={media ? versionedMediaUrl(media) : undefined}
+    data-media-kind={media?.kind}
+    data-media-part={(media as PeakMedia & { part?: string } | null)?.part}
+  >
+    <canvas
+      ref={canvas}
+      className="waveform-canvas"
+      aria-label={media ? `${sourceLabel} audio waveform, ${media.freshness ?? media.status ?? "unknown"} revision` : "Audio waveform is not rendered"}
+      onClick={(event) => {
+        if (!media || !onSeek) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        onSeek(Math.max(0, Math.min(media.duration_seconds, (event.clientX - rect.left) / rect.width * media.duration_seconds)));
+      }}
+    />
+    {media && <small className="waveform-version">{sourceLabel} · {media.output_sha?.slice(0, 10) ?? media.sha256?.slice(0, 10) ?? media.artifact_revision?.slice(0, 10) ?? "unversioned"}</small>}
+  </div>;
 }

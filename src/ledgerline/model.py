@@ -10,6 +10,7 @@ from typing import Any
 PITCH_RE = re.compile(r"^([A-Ga-g])([#b]{0,2})(-?\d+)$")
 DURATION_RE = re.compile(r"^1/(1|2|4|8|16|32)(\.{0,2})$")
 ANCHOR_RE = re.compile(r"^(\d+):(\d+(?:\.\d+)?)$")
+AUTHORED_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{2,127}$")
 
 STEP_TO_SEMITONE = {"C": 0, "D": 2, "E": 4, "F": 5, "G": 7, "A": 9, "B": 11}
 ALTER = {"": 0, "#": 1, "##": 2, "b": -1, "bb": -2}
@@ -25,6 +26,27 @@ DYNAMIC_VELOCITY = {
 }
 SUPPORTED_ARTICULATIONS = {"staccato", "tenuto", "accent", "marcato"}
 SUPPORTED_TIES = {"start", "stop", "continue"}
+SUPPORTED_SLURS = {"start", "stop", "continue"}
+ARTICULATION_ID_RE = re.compile(r"^[a-z][a-z0-9_-]{0,63}$")
+MUSICXML_ARTICULATIONS = {
+    "accent",
+    "breath-mark",
+    "caesura",
+    "detached-legato",
+    "doit",
+    "falloff",
+    "other-articulation",
+    "plop",
+    "scoop",
+    "soft-accent",
+    "spiccato",
+    "staccatissimo",
+    "staccato",
+    "stress",
+    "strong-accent",
+    "tenuto",
+    "unstress",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,8 +109,22 @@ def _note_type(denominator: int) -> str:
 
 
 @dataclass(frozen=True, slots=True)
+class Tuplet:
+    actual: int
+    normal: int
+    type: str
+
+
+@dataclass(frozen=True, slots=True)
+class Grace:
+    kind: str
+    steal: float
+
+
+@dataclass(frozen=True, slots=True)
 class Event:
     duration: Fraction
+    written_duration: Fraction | None = None
     pitches: tuple[Pitch, ...] = ()
     dynamic: str | None = None
     articulation: str | None = None
@@ -98,10 +134,18 @@ class Event:
     pitch_cents: float = 0.0
     expression: tuple[ExpressionPoint, ...] = ()
     gestures: tuple[PerformanceGesture, ...] = ()
+    id: str | None = None
+    tuplet: Tuplet | None = None
+    grace: Grace | None = None
+    slur: str | None = None
 
     @property
     def is_rest(self) -> bool:
         return not self.pitches
+
+    @property
+    def notation_duration(self) -> Fraction:
+        return self.written_duration or self.duration
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +183,11 @@ class ControlEvent:
     performance_value: float | None = None
     velocity: int = 64
     duration: Fraction = Fraction(1, 32)
+    id: str | None = None
+    end_measure: int | None = None
+    end_beat: Fraction | None = None
+    start_dynamic: str | None = None
+    end_dynamic: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -176,6 +225,19 @@ class TempoChange:
     measure: int
     beat: Fraction
     bpm: float
+    ramp_end_measure: int | None = None
+    ramp_end_beat: Fraction | None = None
+    ramp_bpm: float | None = None
+    ramp_curve: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class ArticulationDefinition:
+    id: str
+    musicxml: str
+    label: str | None = None
+    gate: float = 0.9
+    velocity_delta: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -201,6 +263,7 @@ class InstrumentProfile:
     clef_sign: str = "G"
     clef_line: int = 2
     articulations: frozenset[str] = frozenset(SUPPORTED_ARTICULATIONS)
+    articulation_definitions: dict[str, ArticulationDefinition] = field(default_factory=dict)
     keyswitches: dict[str, Pitch] = field(default_factory=dict)
     performance: dict[str, PerformanceBinding] = field(default_factory=dict)
 
@@ -237,10 +300,27 @@ class Piece:
 
 
 def event_from_dict(data: dict[str, Any]) -> Event:
-    unknown = sorted(set(data) - {"p", "r", "d", "dyn", "art", "tie", "vel", "staff", "expr"})
+    unknown = sorted(
+        set(data)
+        - {
+            "id",
+            "p",
+            "r",
+            "d",
+            "dyn",
+            "art",
+            "tie",
+            "vel",
+            "staff",
+            "expr",
+            "tuplet",
+            "grace",
+            "slur",
+        }
+    )
     if unknown:
         raise ValueError(f"unknown event fields: {', '.join(unknown)}")
-    duration = parse_duration(str(data["d"]))
+    written_duration = parse_duration(str(data["d"]))
     rest = data.get("r", False)
     raw_pitch = data.get("p")
     if rest and raw_pitch is not None:
@@ -259,8 +339,10 @@ def event_from_dict(data: dict[str, Any]) -> Event:
     if dynamic is not None and dynamic not in DYNAMIC_VELOCITY:
         raise ValueError(f"unsupported dynamic: {dynamic!r}")
     articulation = data.get("art")
-    if articulation is not None and articulation not in SUPPORTED_ARTICULATIONS:
-        raise ValueError(f"unsupported articulation: {articulation!r}")
+    if articulation is not None and (
+        not isinstance(articulation, str) or not ARTICULATION_ID_RE.fullmatch(articulation)
+    ):
+        raise ValueError(f"invalid articulation id: {articulation!r}")
     tie = data.get("tie")
     if tie is not None and tie not in SUPPORTED_TIES:
         raise ValueError(f"unsupported tie value: {tie!r}")
@@ -273,8 +355,22 @@ def event_from_dict(data: dict[str, Any]) -> Event:
     if staff is not None and (isinstance(staff, bool) or not isinstance(staff, int) or staff < 1):
         raise ValueError("staff must be a positive integer")
     pitch_cents, expression, gestures = _expression_from_dict(data.get("expr"))
+    event_id = _optional_authored_id(data.get("id"), "event id")
+    tuplet = _tuplet_from_dict(data.get("tuplet"))
+    grace = _grace_from_dict(data.get("grace"))
+    slur = data.get("slur")
+    if slur is not None and slur not in SUPPORTED_SLURS:
+        raise ValueError(f"unsupported slur value: {slur!r}")
+    if grace is not None and (rest or tie is not None or tuplet is not None):
+        raise ValueError("grace notes must be pitched and cannot also be tied or tuplets")
+    if slur is not None and rest:
+        raise ValueError("rests cannot carry slurs")
+    duration = Fraction(0) if grace is not None else written_duration
+    if tuplet is not None:
+        duration *= Fraction(tuplet.normal, tuplet.actual)
     return Event(
         duration=duration,
+        written_duration=written_duration,
         pitches=pitches,
         dynamic=dynamic,
         articulation=articulation,
@@ -284,7 +380,54 @@ def event_from_dict(data: dict[str, Any]) -> Event:
         pitch_cents=pitch_cents,
         expression=expression,
         gestures=gestures,
+        id=event_id,
+        tuplet=tuplet,
+        grace=grace,
+        slur=slur,
     )
+
+
+def _tuplet_from_dict(raw: object) -> Tuplet | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("tuplet must be a mapping")
+    unknown = sorted(set(raw) - {"actual", "normal", "type"})
+    if unknown or set(raw) != {"actual", "normal", "type"}:
+        raise ValueError("tuplet requires only actual, normal, and type")
+    actual = raw["actual"]
+    normal = raw["normal"]
+    kind = raw["type"]
+    if (
+        isinstance(actual, bool)
+        or isinstance(normal, bool)
+        or not isinstance(actual, int)
+        or not isinstance(normal, int)
+        or not 2 <= actual <= 16
+        or not 1 <= normal <= 16
+        or actual == normal
+    ):
+        raise ValueError("tuplet actual/normal must be unequal integers in supported range")
+    if kind not in {"start", "continue", "stop"}:
+        raise ValueError("tuplet type must be start, continue, or stop")
+    return Tuplet(actual, normal, str(kind))
+
+
+def _grace_from_dict(raw: object) -> Grace | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValueError("grace must be a mapping")
+    unknown = sorted(set(raw) - {"kind", "steal"})
+    if unknown or set(raw) != {"kind", "steal"}:
+        raise ValueError("grace requires only kind and steal")
+    kind = raw["kind"]
+    steal = _finite_float(raw["steal"], "grace.steal")
+    if kind not in {"acciaccatura", "appoggiatura"}:
+        raise ValueError("grace.kind must be acciaccatura or appoggiatura")
+    if not 0 < steal <= 0.5:
+        raise ValueError("grace.steal must be greater than 0 and at most 0.5")
+    return Grace(str(kind), steal)
 
 
 def _expression_from_dict(
@@ -375,26 +518,29 @@ def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
         kind = str(data["type"])
     except KeyError as exc:
         raise ValueError(f"control requires {exc.args[0]!r}") from exc
+    control_id = _optional_authored_id(data.get("id"), "control id")
 
     if kind == "cc":
-        _reject_control_fields(data, {"at", "type", "controller", "value"})
+        _reject_control_fields(data, {"id", "at", "type", "controller", "value"})
         controller = _control_int(data, "controller")
         value = _control_int(data, "value")
         if controller in {0, 32}:
             raise ValueError("CC 0 and 32 are reserved for the instrument profile's bank select")
         if controller == 64:
             raise ValueError("use type: pedal instead of raw CC 64")
-        return ControlEvent(measure, beat, kind, controller=controller, value=value)
+        return ControlEvent(
+            measure, beat, kind, controller=controller, value=value, id=control_id
+        )
 
     if kind == "pedal":
-        _reject_control_fields(data, {"at", "type", "action"})
+        _reject_control_fields(data, {"id", "at", "type", "action"})
         action = str(data.get("action", ""))
         if action not in {"down", "up", "change"}:
             raise ValueError("pedal action must be down, up, or change")
-        return ControlEvent(measure, beat, kind, pedal_action=action)
+        return ControlEvent(measure, beat, kind, pedal_action=action, id=control_id)
 
     if kind == "keyswitch":
-        _reject_control_fields(data, {"at", "type", "name", "velocity", "duration"})
+        _reject_control_fields(data, {"id", "at", "type", "name", "velocity", "duration"})
         raw_name = data.get("name")
         if not isinstance(raw_name, str) or not raw_name.strip():
             raise ValueError("keyswitch name must be a non-empty string")
@@ -408,10 +554,11 @@ def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
             keyswitch=name,
             velocity=velocity,
             duration=duration,
+            id=control_id,
         )
 
     if kind == "performance":
-        _reject_control_fields(data, {"at", "type", "parameter", "value"})
+        _reject_control_fields(data, {"id", "at", "type", "parameter", "value"})
         parameter = data.get("parameter")
         if not isinstance(parameter, str) or not parameter.strip():
             raise ValueError("performance parameter must be a non-empty string")
@@ -427,6 +574,34 @@ def control_event_from_dict(data: dict[str, Any]) -> ControlEvent:
             kind,
             performance_parameter=parameter.strip(),
             performance_value=value,
+            id=control_id,
+        )
+
+    if kind == "dynamic_ramp":
+        _reject_control_fields(
+            data,
+            {"id", "at", "type", "end", "from", "to", "controller"},
+        )
+        end_measure, end_beat = parse_anchor(str(data.get("end", "")))
+        start_dynamic = data.get("from")
+        end_dynamic = data.get("to")
+        if start_dynamic not in DYNAMIC_VELOCITY or end_dynamic not in DYNAMIC_VELOCITY:
+            raise ValueError("dynamic ramp from/to must be supported dynamic marks")
+        if start_dynamic == end_dynamic:
+            raise ValueError("dynamic ramp endpoints must differ")
+        controller = _control_int(data, "controller", default=11, minimum=1)
+        if controller in {32, 64}:
+            raise ValueError("dynamic ramp controller is reserved")
+        return ControlEvent(
+            measure,
+            beat,
+            kind,
+            controller=controller,
+            id=control_id,
+            end_measure=end_measure,
+            end_beat=end_beat,
+            start_dynamic=str(start_dynamic),
+            end_dynamic=str(end_dynamic),
         )
 
     raise ValueError(f"unsupported control type: {kind!r}")
@@ -436,6 +611,17 @@ def _reject_control_fields(data: dict[str, Any], allowed: set[str]) -> None:
     unknown = sorted(set(data) - allowed)
     if unknown:
         raise ValueError(f"unknown {data.get('type', 'control')} fields: {', '.join(unknown)}")
+
+
+def _optional_authored_id(value: object, path: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str) or not AUTHORED_ID_RE.fullmatch(value):
+        raise ValueError(
+            f"{path} must start with a lowercase letter and contain 3-128 "
+            "lowercase letters, digits, underscores, or hyphens"
+        )
+    return value
 
 
 def _control_int(

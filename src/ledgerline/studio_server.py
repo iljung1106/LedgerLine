@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import mimetypes
 import secrets
-import subprocess
 import webbrowser
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -11,34 +10,76 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urlparse
 
+from ledgerline.build_state import build_state, ensure_media_sidecar
 from ledgerline.compiler import compile_project
 from ledgerline.delegation import (
+    accept_delegation,
+    answer_delegation,
     apply_delegation,
     create_delegation,
+    finalize_delegation_job,
     list_delegations,
     reject_delegation,
+    revise_delegation,
 )
+from ledgerline.jobs import LocalBuildCoordinator
 from ledgerline.studio_edits import StudioSession
-from ledgerline.studio_model import build_studio_model
+from ledgerline.studio_model import build_review_impact, build_studio_model, project_revision
 
 
 class LedgerLineStudioServer(ThreadingHTTPServer):
     daemon_threads = True
 
-    def __init__(self, address: tuple[str, int], project: Path):
+    def __init__(
+        self,
+        address: tuple[str, int],
+        project: Path,
+        *,
+        ffmpeg: str | Path | None = None,
+        job_payload: dict[str, Any] | None = None,
+    ):
         self.project = project
         self.session = StudioSession(project)
+        self.jobs = LocalBuildCoordinator(
+            project,
+            ffmpeg=ffmpeg,
+            default_payload=job_payload,
+            explicit_audio_tools=True,
+            on_terminal=lambda job: finalize_delegation_job(project, job),
+        )
         self.csrf_token = secrets.token_urlsafe(32)
         self.static_root = Path(__file__).parent / "data" / "studio"
         super().__init__(address, _handler(self))
 
+    def server_close(self) -> None:
+        self.jobs.close()
+        super().server_close()
+
 
 def create_studio_server(
-    project: str | Path, *, host: str = "127.0.0.1", port: int = 0
+    project: str | Path,
+    *,
+    host: str = "127.0.0.1",
+    port: int = 0,
+    ffmpeg: str | Path | None = None,
+    fluidsynth: str | Path | None = None,
+    soundfont: str | Path | None = None,
 ) -> LedgerLineStudioServer:
     root = Path(project).resolve()
+    job_payload = _studio_job_payload(
+        root,
+        ffmpeg=ffmpeg,
+        fluidsynth=fluidsynth,
+        soundfont=soundfont,
+        require_audio=False,
+    )
     compile_project(root)
-    server = LedgerLineStudioServer((host, port), root)
+    server = LedgerLineStudioServer(
+        (host, port),
+        root,
+        ffmpeg=job_payload.get("ffmpeg"),
+        job_payload=job_payload,
+    )
     return server
 
 
@@ -49,6 +90,10 @@ def _studio_model(server: LedgerLineStudioServer) -> dict[str, Any]:
         "can_redo": server.session.can_redo,
     }
     model["csrf_token"] = server.csrf_token
+    model["contracts"] = {
+        "model": "/api/schemas/studio-state",
+        "command": "/api/schemas/studio-command",
+    }
     return model
 
 
@@ -59,10 +104,45 @@ def run_studio(
     port: int = 8765,
     open_browser: bool = True,
     ffmpeg: str | Path | None = None,
+    fluidsynth: str | Path | None = None,
+    soundfont: str | Path | None = None,
+    prepare: bool = False,
 ) -> dict[str, Any]:
     root = Path(project).resolve()
-    prepare_studio_assets(root, ffmpeg=ffmpeg)
-    server = create_studio_server(root, host=host, port=port)
+    job_payload = _studio_job_payload(
+        root,
+        ffmpeg=ffmpeg,
+        fluidsynth=fluidsynth,
+        soundfont=soundfont,
+        require_audio=prepare,
+    )
+    prepared_job = None
+    if prepare:
+        coordinator = LocalBuildCoordinator(
+            root,
+            ffmpeg=job_payload.get("ffmpeg"),
+            default_payload=job_payload,
+            explicit_audio_tools=True,
+        )
+        try:
+            prepared_job = coordinator.wait(
+                coordinator.submit("build")["id"],
+                timeout=1_200,
+            )
+        finally:
+            coordinator.close()
+        if prepared_job["status"] != "ready":
+            message = (prepared_job.get("error") or {}).get("message", "Studio build failed")
+            raise RuntimeError(message)
+    prepare_studio_assets(root, ffmpeg=job_payload.get("ffmpeg"))
+    server = create_studio_server(
+        root,
+        host=host,
+        port=port,
+        ffmpeg=job_payload.get("ffmpeg"),
+        fluidsynth=job_payload.get("fluidsynth"),
+        soundfont=job_payload.get("soundfont"),
+    )
     actual_port = server.server_address[1]
     url = f"http://{host}:{actual_port}/"
     report = {
@@ -72,6 +152,7 @@ def run_studio(
         "url": url,
         "host": host,
         "port": actual_port,
+        "prepared_job": prepared_job,
     }
     print(json.dumps(report, ensure_ascii=False), flush=True)
     if open_browser:
@@ -85,6 +166,45 @@ def run_studio(
     return {**report, "status": "stopped"}
 
 
+def _studio_job_payload(
+    project: Path,
+    *,
+    ffmpeg: str | Path | None,
+    fluidsynth: str | Path | None,
+    soundfont: str | Path | None,
+    require_audio: bool,
+) -> dict[str, str]:
+    """Keep only explicitly supplied, existing engine assets for later Studio jobs."""
+
+    supplied = {
+        "ffmpeg": ffmpeg,
+        "fluidsynth": fluidsynth,
+        "soundfont": soundfont,
+    }
+    resolved: dict[str, str] = {}
+    for name, value in supplied.items():
+        if value is None:
+            continue
+        path = Path(value).resolve()
+        if not path.is_file():
+            raise ValueError(f"explicit Studio {name} path is not a file: {path}")
+        resolved[name] = str(path)
+
+    if require_audio:
+        required = {"ffmpeg"}
+        if not (project / "render.yaml").is_file():
+            required.update({"fluidsynth", "soundfont"})
+        missing = sorted(required - resolved.keys())
+        if missing:
+            flags = ", ".join(f"--{name}" for name in missing)
+            mode = "render.yaml" if (project / "render.yaml").is_file() else "legacy"
+            raise ValueError(
+                f"Studio --prepare for a {mode} project requires explicit paths: {flags}; "
+                "no renderer, instrument, or media tool is inferred"
+            )
+    return resolved
+
+
 def prepare_studio_assets(
     project: str | Path, *, ffmpeg: str | Path | None = None, timeout: int = 180
 ) -> dict[str, Any]:
@@ -92,45 +212,25 @@ def prepare_studio_assets(
     compile_project(root)
     build = root / "build"
     audio = build / "mix.wav" if (build / "mix.wav").is_file() else build / "preview.wav"
-    output = build / "studio" / "spectrogram.png"
     if not audio.is_file():
         return {"status": "midi-only", "spectrogram": None}
-    executable = None
-    if ffmpeg:
-        candidate = Path(ffmpeg).resolve()
-        executable = candidate if candidate.is_file() else None
-    if executable is None:
-        try:
-            from ledgerline.audio import resolve_ffmpeg
-
-            executable = resolve_ffmpeg()
-        except Exception:
-            return {"status": "audio-ready", "spectrogram": None}
-    output.parent.mkdir(parents=True, exist_ok=True)
-    command = [
-        str(executable),
-        "-hide_banner",
-        "-y",
-        "-i",
-        str(audio),
-        "-lavfi",
-        "showspectrumpic=s=2400x320:legend=disabled:color=fiery:scale=log",
-        "-frames:v",
-        "1",
-        str(output),
-    ]
-    completed = subprocess.run(
-        command,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        timeout=timeout,
-        shell=False,
-    )
-    if completed.returncode != 0 or not output.is_file():
-        return {"status": "audio-ready", "spectrogram": None, "warning": completed.stderr[-1000:]}
-    return {"status": "ok", "spectrogram": str(output)}
+    try:
+        sidecar = ensure_media_sidecar(
+            root,
+            audio,
+            ffmpeg=ffmpeg,
+            spectrogram=True,
+            timeout=timeout,
+        )
+    except Exception as exc:
+        return {"status": "audio-ready", "spectrogram": None, "warning": str(exc)}
+    status = "ok" if sidecar["spectrogram"] else "audio-ready"
+    return {
+        "status": status,
+        "spectrogram": sidecar["spectrogram"],
+        "source_sha256": sidecar["sha256"],
+        "warning": sidecar["warning"],
+    }
 
 
 def _handler(server: LedgerLineStudioServer):
@@ -141,11 +241,46 @@ def _handler(server: LedgerLineStudioServer):
             path = urlparse(self.path).path
             try:
                 if path == "/api/health":
-                    self._json({"status": "ok"})
+                    self._json(
+                        {
+                            "schema_version": "1",
+                            "status": "ok",
+                            "project": str(server.project),
+                            "revision": project_revision(server.project),
+                        }
+                    )
                 elif path == "/api/model":
                     self._json(_studio_model(server))
+                elif path == "/api/status":
+                    self._json(
+                        {
+                            "schema_version": "1",
+                            "status": "ok",
+                            "build": build_state(server.project),
+                            "jobs": server.jobs.list()["jobs"],
+                        }
+                    )
+                elif path == "/api/review/impact":
+                    self._json(build_review_impact(server.project))
+                elif path == "/api/jobs":
+                    self._json(server.jobs.list())
+                elif path.startswith("/api/jobs/"):
+                    segments = path.strip("/").split("/")
+                    if len(segments) != 3:
+                        raise ValueError("job route is invalid")
+                    self._json(server.jobs.get(segments[2]))
                 elif path == "/api/delegations":
                     self._json(list_delegations(server.project))
+                elif path == "/api/schemas/studio-command":
+                    self._file(
+                        _schema_path("studio-command.schema.json"),
+                        "application/schema+json",
+                    )
+                elif path == "/api/schemas/studio-state":
+                    self._file(
+                        _schema_path("studio-state.schema.json"),
+                        "application/schema+json",
+                    )
                 elif path == "/api/score":
                     self._file(server.project / "build" / "score.musicxml", "application/xml")
                 elif path.startswith("/media/"):
@@ -154,6 +289,10 @@ def _handler(server: LedgerLineStudioServer):
                 else:
                     relative = "index.html" if path in {"", "/"} else unquote(path.lstrip("/"))
                     self._safe_file(server.static_root, relative)
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                # Browsers may cancel an obsolete polling response after a newer model arrives.
+                # The project is untouched and there is no client left to receive an error body.
+                return
             except Exception as exc:
                 self._error(exc)
 
@@ -176,6 +315,26 @@ def _handler(server: LedgerLineStudioServer):
                 elif path == "/api/redo":
                     report = server.session.redo()
                     self._json({**report, "model": _studio_model(server)})
+                elif path == "/api/jobs":
+                    kind = payload.get("kind")
+                    if not isinstance(kind, str) or not kind:
+                        raise ValueError("job kind is required")
+                    options = payload.get("payload", {})
+                    if not isinstance(options, dict):
+                        raise ValueError("job payload must be an object")
+                    self._json(
+                        server.jobs.submit(
+                            kind,
+                            options,
+                            coalesce=bool(payload.get("coalesce", True)),
+                        ),
+                        202,
+                    )
+                elif path.startswith("/api/jobs/"):
+                    segments = path.strip("/").split("/")
+                    if len(segments) != 4 or segments[3] != "cancel":
+                        raise ValueError("job action route is invalid")
+                    self._json(server.jobs.cancel(segments[2]))
                 elif path == "/api/delegations":
                     self._json(
                         create_delegation(
@@ -191,6 +350,8 @@ def _handler(server: LedgerLineStudioServer):
                     self._delegation_action(path, payload)
                 else:
                     self._json({"status": "error", "message": "route not found"}, 404)
+            except (BrokenPipeError, ConnectionAbortedError, ConnectionResetError):
+                return
             except Exception as exc:
                 self._error(exc)
 
@@ -205,12 +366,31 @@ def _handler(server: LedgerLineStudioServer):
                     task_id,
                     token=payload.get("token"),
                     session=server.session,
+                    coordinator=server.jobs,
                 )
             elif action == "reject":
                 report = reject_delegation(server.project, task_id, str(payload.get("reason", "")))
+            elif action == "answer":
+                report = answer_delegation(
+                    server.project,
+                    task_id,
+                    str(payload.get("answer", "")),
+                )
+            elif action == "accept":
+                report = accept_delegation(
+                    server.project,
+                    task_id,
+                    str(payload.get("note", "")),
+                )
+            elif action == "revise":
+                report = revise_delegation(
+                    server.project,
+                    task_id,
+                    str(payload.get("feedback", "")),
+                )
             else:
                 raise ValueError("delegation action is unsupported")
-            self._json(report)
+            self._json(report, 202 if report.get("status") == "building" else 200)
 
         def _body(self) -> dict[str, Any]:
             length = int(self.headers.get("Content-Length", "0"))
@@ -239,7 +419,11 @@ def _handler(server: LedgerLineStudioServer):
             self.send_header("Content-Type", kind)
             self.send_header("Content-Length", str(len(data)))
             cache_control = (
-                "no-store" if path.name == "index.html" else "public, max-age=60"
+                "no-store"
+                if path.name == "index.html"
+                else "public, max-age=31536000, immutable"
+                if urlparse(self.path).query.startswith("v=")
+                else "public, max-age=60"
             )
             self.send_header("Cache-Control", cache_control)
             self.send_header("X-Content-Type-Options", "nosniff")
@@ -272,3 +456,10 @@ def _handler(server: LedgerLineStudioServer):
             return
 
     return StudioHandler
+
+
+def _schema_path(name: str) -> Path:
+    bundled = Path(__file__).parent / "data" / "schemas" / name
+    if bundled.is_file():
+        return bundled
+    return Path(__file__).parents[2] / "schemas" / name

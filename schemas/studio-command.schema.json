@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://ledgerline.dev/schemas/studio-command.schema.json",
+  "title": "LedgerLine Studio edit command",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["type"],
+  "properties": {
+    "type": {
+      "enum": [
+        "update_note", "update_event", "update_instrument", "insert_event", "delete_event",
+        "duplicate_event", "replace_measure_voice", "move_event", "resize_event",
+        "insert_control", "update_control", "delete_control",
+        "insert_tempo", "update_tempo", "delete_tempo",
+        "insert_point", "update_point", "move_point", "delete_point", "set_curve",
+        "update_mix", "update_mix_node", "set_mix_send", "delete_mix_send",
+        "add_mix_insert", "update_mix_insert", "delete_mix_insert",
+        "reorder_mix_insert", "transpose_range", "scale_velocity_range",
+        "set_articulation_range"
+      ]
+    },
+    "part": {"type": "string", "minLength": 1},
+    "measure": {"type": "integer", "minimum": 1},
+    "voice": {"type": "string", "minLength": 1},
+    "event_id": {"type": "string", "minLength": 1},
+    "new_event_id": {"type": "string", "minLength": 3},
+    "event_index": {"type": "integer", "minimum": 0},
+    "pitch_index": {"type": "integer", "minimum": 0},
+    "target_measure": {"type": "integer", "minimum": 1},
+    "target_voice": {"type": "string", "minLength": 1},
+    "target_offset_whole": {"$ref": "#/$defs/fraction"},
+    "at_offset_whole": {"$ref": "#/$defs/fraction"},
+    "duration": {"type": "string", "minLength": 1},
+    "event": {"type": "object"},
+    "events": {"type": "array", "minItems": 1, "items": {"type": "object"}},
+    "changes": {"type": "object", "minProperties": 1},
+    "node_type": {"enum": ["track", "bus", "master"]},
+    "node": {"type": "string", "minLength": 1},
+    "bus": {"type": "string", "minLength": 1},
+    "gain_db": {"type": "number", "minimum": -120, "maximum": 24},
+    "insert_index": {"type": "integer", "minimum": 0},
+    "to_index": {"type": "integer", "minimum": 0},
+    "processor": {
+      "type": "object",
+      "additionalProperties": true,
+      "required": ["type"],
+      "properties": {"type": {"enum": ["eq", "compressor", "reverb"]}}
+    },
+    "control": {"type": "object"},
+    "control_id": {"type": "string", "minLength": 1},
+    "control_index": {"type": "integer", "minimum": 0},
+    "tempo": {"type": "object", "required": ["at", "bpm"]},
+    "bpm": {"type": "number", "minimum": 1, "maximum": 999},
+    "index": {"type": "integer", "minimum": 0},
+    "lane": {"type": "string", "minLength": 1},
+    "point": {"type": "object", "required": ["at", "value"]},
+    "point_id": {"type": "string", "minLength": 1},
+    "point_index": {"type": "integer", "minimum": 0},
+    "at": {"$ref": "#/$defs/anchor"},
+    "curve": {"enum": ["step", "linear", "smooth", "exponential", "bezier"]},
+    "measure_start": {"type": "integer", "minimum": 1},
+    "measure_end": {"type": "integer", "minimum": 1},
+    "semitones": {"type": "integer", "minimum": -127, "maximum": 127},
+    "factor": {"type": "number", "exclusiveMinimum": 0},
+    "articulation": {"type": ["string", "null"]}
+  },
+  "allOf": [
+    {
+      "if": {"properties": {"type": {"enum": ["update_note", "update_event", "delete_event", "move_event", "resize_event", "duplicate_event"]}}},
+      "then": {
+        "required": ["part"],
+        "anyOf": [
+          {"required": ["event_id"]},
+          {"required": ["measure", "voice", "event_index"]}
+        ]
+      }
+    },
+    {"if": {"properties": {"type": {"enum": ["update_note", "update_event"]}}}, "then": {"required": ["changes"]}},
+    {
+      "if": {"properties": {"type": {"const": "update_instrument"}}},
+      "then": {
+        "required": ["part", "changes"],
+        "properties": {
+          "changes": {
+            "type": "object",
+            "additionalProperties": false,
+            "minProperties": 1,
+            "properties": {
+              "profile": {"type": "string", "pattern": "^[a-z][a-z0-9._-]{0,127}$"},
+              "instrument": {"type": "string", "minLength": 1},
+              "state": {"type": ["string", "null"], "minLength": 1}
+            }
+          }
+        }
+      }
+    },
+    {"if": {"properties": {"type": {"const": "insert_event"}}}, "then": {"required": ["part", "measure", "voice", "event"]}},
+    {"if": {"properties": {"type": {"const": "duplicate_event"}}}, "then": {"required": ["target_offset_whole"]}},
+    {"if": {"properties": {"type": {"const": "move_event"}}}, "then": {"required": ["target_offset_whole"]}},
+    {"if": {"properties": {"type": {"const": "resize_event"}}}, "then": {"required": ["duration"]}},
+    {"if": {"properties": {"type": {"const": "replace_measure_voice"}}}, "then": {"required": ["part", "measure", "voice", "events"]}},
+    {"if": {"properties": {"type": {"const": "insert_control"}}}, "then": {"required": ["part", "control"]}},
+    {
+      "if": {"properties": {"type": {"enum": ["update_control", "delete_control"]}}},
+      "then": {
+        "required": ["part"],
+        "anyOf": [{"required": ["control_id"]}, {"required": ["control_index"]}]
+      }
+    },
+    {"if": {"properties": {"type": {"const": "update_control"}}}, "then": {"required": ["changes"]}},
+    {"if": {"properties": {"type": {"const": "insert_tempo"}}}, "then": {"required": ["tempo"]}},
+    {"if": {"properties": {"type": {"enum": ["update_tempo", "delete_tempo"]}}}, "then": {"required": ["index"]}},
+    {"if": {"properties": {"type": {"const": "insert_point"}}}, "then": {"required": ["lane", "point"]}},
+    {
+      "if": {"properties": {"type": {"enum": ["update_point", "move_point", "delete_point"]}}},
+      "then": {
+        "required": ["lane"],
+        "anyOf": [{"required": ["point_id"]}, {"required": ["point_index"]}]
+      }
+    },
+    {"if": {"properties": {"type": {"const": "update_point"}}}, "then": {"required": ["changes"]}},
+    {"if": {"properties": {"type": {"const": "move_point"}}}, "then": {"required": ["at"]}},
+    {"if": {"properties": {"type": {"const": "set_curve"}}}, "then": {"required": ["lane", "curve"]}},
+    {"if": {"properties": {"type": {"const": "update_mix"}}}, "then": {"required": ["part", "changes"]}},
+    {"if": {"properties": {"type": {"const": "update_mix_node"}}}, "then": {"required": ["node_type", "node", "changes"]}},
+    {"if": {"properties": {"type": {"const": "set_mix_send"}}}, "then": {"required": ["node_type", "node", "bus", "gain_db"]}},
+    {"if": {"properties": {"type": {"const": "delete_mix_send"}}}, "then": {"required": ["node_type", "node", "bus"]}},
+    {"if": {"properties": {"type": {"const": "add_mix_insert"}}}, "then": {"required": ["node_type", "node", "processor"]}},
+    {"if": {"properties": {"type": {"const": "update_mix_insert"}}}, "then": {"required": ["node_type", "node", "insert_index", "changes"]}},
+    {"if": {"properties": {"type": {"const": "delete_mix_insert"}}}, "then": {"required": ["node_type", "node", "insert_index"]}},
+    {"if": {"properties": {"type": {"const": "reorder_mix_insert"}}}, "then": {"required": ["node_type", "node", "insert_index", "to_index"]}},
+    {
+      "if": {"properties": {"type": {"enum": ["transpose_range", "scale_velocity_range", "set_articulation_range"]}}},
+      "then": {"required": ["part", "measure_start", "measure_end"]}
+    },
+    {"if": {"properties": {"type": {"const": "transpose_range"}}}, "then": {"required": ["semitones"]}},
+    {"if": {"properties": {"type": {"const": "scale_velocity_range"}}}, "then": {"required": ["factor"]}},
+    {"if": {"properties": {"type": {"const": "set_articulation_range"}}}, "then": {"required": ["articulation"]}}
+  ],
+  "$defs": {
+    "anchor": {"type": "string", "pattern": "^[1-9][0-9]*:[1-9][0-9]*(?:\\.[0-9]+)?$"},
+    "fraction": {"type": "string", "pattern": "^(?:0|[1-9][0-9]*)(?:/[1-9][0-9]*)?$"}
+  }
+}

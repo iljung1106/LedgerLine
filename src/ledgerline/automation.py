@@ -11,7 +11,7 @@ from typing import Any
 import yaml
 
 from ledgerline.diagnostics import Diagnostic, ValidationError
-from ledgerline.model import Piece, parse_anchor
+from ledgerline.model import AUTHORED_ID_RE, Piece, parse_anchor
 from ledgerline.timeline import Timeline
 
 TARGET_RE = re.compile(r"^(parts|buses|master)\.[a-zA-Z0-9_.-]+$")
@@ -27,6 +27,7 @@ class AutomationPoint:
     curve: str | None = None
     in_value: float | None = None
     out_value: float | None = None
+    id: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -83,6 +84,7 @@ def compile_automation(
                     "seconds": position.seconds,
                     "sample": position.sample,
                     "value": point.value,
+                    "id": point.id,
                     "curve": point.curve or lane.interpolation,
                     "in_value": point.in_value,
                     "out_value": point.out_value,
@@ -159,7 +161,12 @@ def _point_from_dict(raw: Any, lane_path: str, index: int, piece: Piece) -> Auto
     path = f"{lane_path}.points[{index}]"
     if not isinstance(raw, dict):
         raise ValueError(f"{path} must be a mapping")
-    _reject_unknown(raw, {"at", "value", "curve", "in_value", "out_value"}, path)
+    _reject_unknown(raw, {"id", "at", "value", "curve", "in_value", "out_value"}, path)
+    point_id = raw.get("id")
+    if point_id is not None and (
+        not isinstance(point_id, str) or not AUTHORED_ID_RE.fullmatch(point_id)
+    ):
+        raise ValueError(f"{path}.id is invalid")
     measure, beat = parse_anchor(str(raw["at"]))
     if not 1 <= measure <= piece.measures or beat > piece.time_at(measure).beats:
         raise ValueError(f"{path}.at is outside the piece")
@@ -169,12 +176,13 @@ def _point_from_dict(raw: Any, lane_path: str, index: int, piece: Piece) -> Auto
         raise ValueError(f"{path}.curve is unsupported: {curve!r}")
     in_value = _optional_number(raw.get("in_value"), f"{path}.in_value")
     out_value = _optional_number(raw.get("out_value"), f"{path}.out_value")
-    return AutomationPoint(measure, beat, value, curve, in_value, out_value)
+    return AutomationPoint(measure, beat, value, curve, in_value, out_value, point_id)
 
 
 def _validate_lane_conflicts(lanes: tuple[AutomationLane, ...]) -> None:
     ids: set[str] = set()
     targets: set[str] = set()
+    point_ids: set[str] = set()
     for lane in lanes:
         if lane.id in ids:
             raise ValueError(f"duplicate automation lane id: {lane.id}")
@@ -182,6 +190,11 @@ def _validate_lane_conflicts(lanes: tuple[AutomationLane, ...]) -> None:
             raise ValueError(f"multiple automation lanes target {lane.target!r}")
         ids.add(lane.id)
         targets.add(lane.target)
+        for point in lane.points:
+            if point.id is not None and point.id in point_ids:
+                raise ValueError(f"duplicate automation point id: {point.id}")
+            if point.id is not None:
+                point_ids.add(point.id)
 
 
 def _interpolate(start: dict, end: dict, position: float, curve: str) -> float:

@@ -3,9 +3,9 @@
 LedgerLine separates human/agent authorship from deterministic mechanics.
 
 ```text
-authored score + motifs + expression + performance policy
+creative brief + protected ranges + authored score + motifs + expression + performance policy
         │
-        ├─ validate / inspect / duration
+        ├─ validate / inspect / refine evidence / duration
         ▼
 shared tempo-aware timeline ──► MusicXML + MIDI/MPE + note-expression plan
         │
@@ -19,11 +19,47 @@ WAV stems ──► track/bus graph + automation + mastering ──► mix.wav
         └─ visual + matched A/B review                 └─ review annotations
 
 assets/source/license/conversion ──► lockfile + manifest + .llproject bundle
+
+authored revision ──► build/state.json ──► compile/render/mix freshness + engine receipts
+        │                                      │
+        └─ atomic edit + disk history          └─ SHA-keyed Studio media + local jobs
 ```
 
 Commands never change authored music unless the user explicitly invokes `apply-edits`, which writes
-to a new directory and validates the result. `snapshot` preserves source before consequential
-work. Generated files live under `build/`.
+to a new directory, `prepare-ids`, or a validated Studio/delegation transaction. `snapshot` and
+Studio's disk history preserve source before consequential work. Generated files live under
+`build/`.
+
+## Direction and refinement boundary
+
+`brief.yaml` stores user direction separately from notation. Sections and part roles give analysis
+context; protected ranges/aspects are machine-checkable invariants. Refinement reports identify
+evidence and possible questions for structure, harmony, orchestration, and expression, but neither
+score the music nor edit source. An agent proposes a named pass against an exact source revision,
+then applies one validated command transaction after review.
+
+Stable optional event/control IDs make those proposals durable. A compatibility project can still
+compile without IDs; `prepare-ids` adds deterministic IDs with a dry-run report and backup before
+structural editing.
+
+## Studio and build truth
+
+`build/state.json` projects the current authored revision, compiler manifest, render cache keys,
+actual output hashes, mix input hash, and renderer/instrument/preset-state receipts into one API
+contract. Score, audio, waveform, and spectrogram URLs include content hashes. A local FIFO job
+coordinator keeps compile/render/mix work off HTTP request threads, reports progress, coalesces stale
+queued work, and supports cancellation. File presence alone never implies freshness.
+
+Delegation proposals run the same Studio transaction and validation path in a temporary project.
+Authored YAML is always copied by value and is never hard-linked. If an existing `render.yaml`
+uses project-relative executable, instrument, or preset-state paths, preview exposes only those
+explicit dependencies (plus paths explicitly proposed by `update_instrument`) as read-only inputs
+through same-volume file hard links. Directory instruments such as VST3 bundles are traversed
+without following symlinks and are bounded to 20,000 files and 32 levels. A missing path, escape
+from the temporary sandbox, unsupported entry, exceeded bound, or unavailable hard link fails the
+proposal closed; LedgerLine does not download, substitute, or copy a large sample library. Absolute
+external paths remain absolute and are only validated in place. Preview commands never write an
+executable, instrument, state file, or anything under a linked dependency directory.
 
 ## Time and automation
 

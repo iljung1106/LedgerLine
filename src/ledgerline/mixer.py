@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import json
-import subprocess
+import os
+import threading
 from pathlib import Path
 
 from ledgerline.audio import db_to_amplitude, measure_audio, pan_coefficients, resolve_ffmpeg
 from ledgerline.automation import compile_automation, load_automation
 from ledgerline.diagnostics import CapabilityError, Diagnostic
+from ledgerline.external_process import run_external
 from ledgerline.mix_config import MixConfig, MixNode, load_mix_config, processor_filters
 from ledgerline.project import load_piece
 
@@ -16,7 +18,10 @@ def mix_project(
     *,
     ffmpeg: str | Path | None = None,
     timeout: int = 180,
+    cancel_event: threading.Event | None = None,
 ) -> dict:
+    from ledgerline.build_state import authored_revision, file_identity, record_mix
+
     root = Path(project).resolve()
     config = load_mix_config(root)
     master = config.master
@@ -36,11 +41,14 @@ def mix_project(
             )
         inputs.append(stem)
 
-    command = [str(resolve_ffmpeg(ffmpeg)), "-hide_banner", "-y"]
+    ffmpeg_path = resolve_ffmpeg(ffmpeg)
+    command = [str(ffmpeg_path), "-hide_banner", "-y"]
     for input_path in inputs:
         command.extend(["-i", str(input_path)])
     graph, output_label = _filter_graph(config, automation)
     premaster = root / "build" / "premaster.wav"
+    premaster_temporary = premaster.with_name(f".{premaster.stem}.rendering{premaster.suffix}")
+    premaster_temporary.unlink(missing_ok=True)
     command.extend(
         [
             "-filter_complex",
@@ -51,19 +59,25 @@ def mix_project(
             "pcm_s24le",
             "-ar",
             "48000",
-            str(premaster),
+            str(premaster_temporary),
         ]
     )
-    completed = subprocess.run(
-        command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        shell=False,
-        cwd=str(root),
-    )
-    if completed.returncode != 0 or not premaster.is_file() or premaster.stat().st_size <= 44:
+    try:
+        completed = run_external(
+            command,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cwd=root,
+        )
+    except BaseException:
+        premaster_temporary.unlink(missing_ok=True)
+        raise
+    if (
+        completed.returncode != 0
+        or not premaster_temporary.is_file()
+        or premaster_temporary.stat().st_size <= 44
+    ):
+        premaster_temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "FFmpeg premaster mix failed",
             [
@@ -75,7 +89,7 @@ def mix_project(
                 )
             ],
         )
-    ffmpeg_path = Path(command[0])
+    os.replace(premaster_temporary, premaster)
     target_lufs = float(master.get("target_lufs", -16.0))
     ceiling_db = float(master.get("true_peak_ceiling_db", -1.0))
     loudness_range = float(master.get("loudness_range_lu", 11.0))
@@ -86,6 +100,7 @@ def mix_project(
         target_lufs=target_lufs,
         true_peak_dbtp=ceiling_db,
         loudness_range_lu=loudness_range,
+        cancel_event=cancel_event,
     )
     required = {
         "integrated_lufs": measurement["integrated_lufs"],
@@ -104,6 +119,8 @@ def mix_project(
             ],
         )
     output = root / "build" / "mix.wav"
+    output_temporary = output.with_name(f".{output.stem}.rendering{output.suffix}")
+    output_temporary.unlink(missing_ok=True)
     limit = db_to_amplitude(ceiling_db)
     master_filter = (
         f"loudnorm=I={target_lufs}:TP={ceiling_db}:LRA={loudness_range}:"
@@ -125,34 +142,46 @@ def mix_project(
         "pcm_s24le",
         "-ar",
         "48000",
-        str(output),
+        str(output_temporary),
     ]
-    mastered = subprocess.run(
-        master_command,
-        check=False,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-        shell=False,
-        cwd=str(root),
-    )
-    if mastered.returncode != 0 or not output.is_file() or output.stat().st_size <= 44:
+    try:
+        mastered = run_external(
+            master_command,
+            timeout=timeout,
+            cancel_event=cancel_event,
+            cwd=root,
+        )
+    except BaseException:
+        output_temporary.unlink(missing_ok=True)
+        raise
+    if (
+        mastered.returncode != 0
+        or not output_temporary.is_file()
+        or output_temporary.stat().st_size <= 44
+    ):
+        output_temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "FFmpeg mastering failed",
             [Diagnostic("error", "mix.master_failed", str(output), mastered.stderr[-3000:])],
         )
-    final_measurement = measure_audio(
-        output,
-        ffmpeg=ffmpeg_path,
-        timeout=timeout,
-        target_lufs=target_lufs,
-        true_peak_dbtp=ceiling_db,
-        loudness_range_lu=loudness_range,
-    )
+    try:
+        final_measurement = measure_audio(
+            output_temporary,
+            ffmpeg=ffmpeg_path,
+            timeout=timeout,
+            target_lufs=target_lufs,
+            true_peak_dbtp=ceiling_db,
+            loudness_range_lu=loudness_range,
+            cancel_event=cancel_event,
+        )
+    except BaseException:
+        output_temporary.unlink(missing_ok=True)
+        raise
     tolerance = float(master.get("loudness_tolerance_lu", 0.5))
     actual_lufs = final_measurement["integrated_lufs"]
     actual_peak = final_measurement["true_peak_dbtp"]
     if actual_lufs is None or abs(actual_lufs - target_lufs) > tolerance:
+        output_temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "master loudness is outside the authored tolerance",
             [
@@ -171,6 +200,7 @@ def mix_project(
             ],
         )
     if actual_peak is None or actual_peak > ceiling_db + 0.1:
+        output_temporary.unlink(missing_ok=True)
         raise CapabilityError(
             "master true peak exceeds the authored ceiling",
             [
@@ -182,15 +212,19 @@ def mix_project(
                 )
             ],
         )
+    os.replace(output_temporary, output)
     report = {
         "schema_version": "2",
         "status": "ok",
+        "source_revision": authored_revision(root),
         "output": str(output),
+        "output_identity": file_identity(output),
         "premaster": str(premaster),
         "premaster_measurement": measurement,
         "final_measurement": final_measurement,
         "bytes": output.stat().st_size,
         "tracks": [path.stem for path in inputs],
+        "inputs": [file_identity(path) for path in inputs],
         "buses": list(config.buses),
         "automation_lanes": len(automation),
         "ffmpeg": command[0],
@@ -198,6 +232,7 @@ def mix_project(
     (root / "build" / "mix-report.json").write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    record_mix(root, report)
     return report
 
 

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from fractions import Fraction
 from pathlib import Path
 
 import mido
@@ -13,7 +14,7 @@ from ledgerline.compiler_midi import (
     _pitch_bend_range_messages,
 )
 from ledgerline.expression_plan import MPE_CHANNELS
-from ledgerline.model import Part, Piece
+from ledgerline.model import DYNAMIC_VELOCITY, Part, Piece
 
 
 def compile_mpe_part(
@@ -132,6 +133,46 @@ def compile_mpe_part(
                             "control_change",
                             channel=0,
                             control=int(binding.controller),
+                            value=max(0, min(127, value)),
+                        ),
+                    )
+                )
+        elif control.kind == "dynamic_ramp":
+            end_tick = _anchor_tick(
+                piece,
+                starts,
+                int(control.end_measure),
+                Fraction(control.end_beat),
+            )
+            start_value = DYNAMIC_VELOCITY[str(control.start_dynamic)]
+            end_value = DYNAMIC_VELOCITY[str(control.end_dynamic)]
+            events.append(
+                TimedMessage(
+                    tick,
+                    11,
+                    mido.MetaMessage(
+                        "marker",
+                        text=(
+                            "ledgerline:dynamic-ramp:"
+                            f"from={control.start_dynamic};to={control.end_dynamic};"
+                            f"controller={control.controller};end_tick={end_tick}"
+                        ),
+                    ),
+                )
+            )
+            sample_ticks = list(range(tick, end_tick, 30))
+            sample_ticks.append(end_tick)
+            for sample_tick in sample_ticks:
+                position = (sample_tick - tick) / (end_tick - tick)
+                value = round(start_value + (end_value - start_value) * position)
+                events.append(
+                    TimedMessage(
+                        sample_tick,
+                        12,
+                        mido.Message(
+                            "control_change",
+                            channel=0,
+                            control=int(control.controller),
                             value=max(0, min(127, value)),
                         ),
                     )
